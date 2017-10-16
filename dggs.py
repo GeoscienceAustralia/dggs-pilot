@@ -12,6 +12,14 @@ class DGGS(object):
     i2n = np.r_[['S', 'N', '_', '_',
                  'O', 'P', 'Q', 'R']]
 
+    proj_opts = dict(proj='rhealpix',
+                     no_defs=True,
+                     wkext=True,
+                     datum='WGS84',
+                     lat_0=0,
+                     south_square=0,
+                     north_square=0)
+
     @staticmethod
     def _compute_norm_factor(rh):
         xrange, _ = rh([-180, 180], [0, 0])
@@ -38,12 +46,15 @@ class DGGS(object):
         return idx, x, y, len(cells)
 
     def __init__(self):
-        proj_string = ('+proj=rhealpix +wktext +no_defs +ellps=WGS84 +datum=WGS84'
-                       ' +a=1 +lat_0=0 +south_square=0 +north_square=0')
-        self._rh = pyproj.Proj(proj_string)
+        self._rh = pyproj.Proj(a=1, **DGGS.proj_opts)
         self._s = DGGS._compute_norm_factor(self._rh)
+        self._rhm = pyproj.Proj(**DGGS.proj_opts)
+        self._sm = DGGS._compute_norm_factor(self._rhm)
 
-    def mk_norm(self, idx, scale_level):
+    def mk_norm(self, idx, scale_level, norm_factor=None):
+        if norm_factor is None:
+            norm_factor = self._s
+
         OFFSET = ((0, 0), (0, 2), None, None,
                   (0, 1), (1, 1), (2, 1), (3, 1))
 
@@ -56,7 +67,7 @@ class DGGS(object):
         off_y -= 1.5
         off_y += 1
 
-        denorm = 1.0/self._s
+        denorm = 1.0/norm_factor
         s_x *= denorm
         s_y *= denorm
         off_x *= denorm
@@ -167,3 +178,86 @@ class DGGS(object):
             return cv2.remap(src, src_x, src_y, cv2.INTER_CUBIC)
 
         return warp
+
+    def mk_display_helper(self, south_square=0, north_square=0, meters=True):
+        norm_factor = self._sm if meters else self._s
+
+        def bounds(addr, shape, b=1e-6):
+            top_cell, x0, y0, scale_level = self.addr2ixys(addr)
+            pix2rh = self.mk_norm(top_cell, scale_level, norm_factor)
+
+            h, w = shape[:2]
+            p1 = pix2rh(x0+b, y0+b)
+            p2 = pix2rh(x0+w-b, y0+h-b)
+
+            return p1, p2
+
+        def points2extent(p1, p2):
+            xx = sorted([p1[0], p2[0]])
+            yy = sorted([p1[1], p2[1]])
+            return [xx[0], xx[1], yy[0], yy[1]]
+
+        def simple(addr, im):
+            p1, p2 = bounds(addr, im.shape)
+            return im, points2extent(p1, p2)
+
+        if south_square == 0 and north_square == 0:
+            return simple
+
+        RR = {
+            0: np.eye(2),
+            90: np.asarray([[0, -1],
+                            [1, +0]], dtype='float32'),
+
+            270: np.asarray([[+0, 1],
+                             [-1, 0]], dtype='float32'),
+
+            180: np.asarray([[-1,  0],
+                             [+0, -1]], dtype='float32'),
+        }
+
+        def mk_correction(pole, square):
+            if square == 0:
+                return None
+
+            side = 1.0/norm_factor
+
+            angles = dict(N=[0, 90, 180, 270],
+                          S=[0, 270, 180, 90])
+
+            t0 = dict(N=(-1.5,  1),
+                      S=(-1.5, -1))[pole]
+
+            t0 = np.vstack(t0)
+            t1 = np.vstack([square, 0])
+
+            a = angles[pole][square]
+            R = RR[a]
+
+            t = t1 + t0 - np.dot(R, t0)
+
+            return a, R, t*side
+
+        corrections = dict(
+            N=mk_correction('N', north_square),
+            S=mk_correction('S', south_square))
+
+        def rot(im, a):
+            if a == 0:
+                return im
+            return cv2.rotate(im, {90: cv2.ROTATE_90_CLOCKWISE,
+                                   180: cv2.ROTATE_180,
+                                   270: cv2.ROTATE_90_COUNTERCLOCKWISE}[a])
+
+        def with_rot(addr, im):
+            cc = corrections.get(addr[0])
+
+            if cc is None:
+                return simple(addr, im)
+
+            a, R, t = cc
+            p1, p2 = [np.dot(R, np.vstack(p)) + t for p in bounds(addr, im.shape)]
+
+            return rot(im, a), points2extent(p1.ravel(), p2.ravel())
+
+        return with_rot
