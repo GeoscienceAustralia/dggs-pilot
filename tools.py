@@ -70,3 +70,64 @@ def gen_pts_from_distribution(im, affine, noshuffle=False):
         return xy
 
     return xy[:, np.random.choice(n_total, n_total, replace=False)]
+
+
+def convert_global(src_file, dst_file, scale_level, band_names=None, combine_bands=False):
+    import rasterio
+    import h5py
+    from .dggs import DGGS
+
+    if isinstance(band_names, str):
+        band_names = [band_names]
+
+    def get_band_name(i):
+        if band_names is None:
+            return 'band{}'.format(i+1)
+
+        return band_names[i]
+
+    affine, src_crs = None, None
+    bands = []
+
+    with rasterio.open(src_file, 'r') as f:
+        affine = f.affine
+        bands = [f.read(i+1) for i in range(f.count)]
+        if combine_bands:
+            bands = [np.dstack(bands)]
+        src_crs = f.crs
+
+    num_bands = len(bands)
+
+    print('CRS:', src_crs)
+
+    dg = DGGS()
+
+    cells = {}
+
+    for code in 'SNOPQR':
+        addr = code + '0'*scale_level
+        print('Processing:' + addr)
+
+        wrp = dg.mk_warper(addr)
+
+        cells[addr] = [wrp(b, affine) for b in bands]
+
+    chunks = (3**5, 3**5)  # TODO: probably needs to be dynamic
+
+    opts = dict(compression='gzip',
+                shuffle=True)
+
+    with h5py.File(dst_file, 'w') as f:
+        for i in range(num_bands):
+            band_name = get_band_name(i)
+            print('Saving band: {band_name}'.format(band_name=band_name))
+
+            g = f.create_group(band_name)
+            for (addr, bands) in cells.items():
+                band = bands[i]
+                chunks_ = chunks + band.shape[2:]
+                g.create_dataset(addr, data=band, chunks=chunks_, **opts)
+
+        f.close()
+
+    return cells
