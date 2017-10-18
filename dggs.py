@@ -182,6 +182,11 @@ class DGGS(object):
     def mk_display_helper(self, south_square=0, north_square=0, meters=True):
         norm_factor = self._sm if meters else self._s
 
+        def shape(a):
+            if isinstance(a, (tuple, list)):
+                return a
+            return a.shape
+
         def bounds(addr, shape, b=1e-6):
             top_cell, x0, y0, scale_level = self.addr2ixys(addr)
             pix2rh = self.mk_norm(top_cell, scale_level, norm_factor)
@@ -198,7 +203,7 @@ class DGGS(object):
             return [xx[0], xx[1], yy[0], yy[1]]
 
         def simple(addr, im):
-            p1, p2 = bounds(addr, im.shape)
+            p1, p2 = bounds(addr, shape(im))
             return im, points2extent(p1, p2)
 
         if south_square == 0 and north_square == 0:
@@ -245,6 +250,12 @@ class DGGS(object):
         def rot(im, a):
             if a == 0:
                 return im
+
+            if isinstance(im, (tuple, list)):
+                if a == 180:
+                    return im
+                return im[:2][::-1] + im[2:]  # Swap first 2 coords
+
             return cv2.rotate(im, {90: cv2.ROTATE_90_CLOCKWISE,
                                    180: cv2.ROTATE_180,
                                    270: cv2.ROTATE_90_COUNTERCLOCKWISE}[a])
@@ -256,7 +267,7 @@ class DGGS(object):
                 return simple(addr, im)
 
             a, R, t = cc
-            p1, p2 = [np.dot(R, np.vstack(p)) + t for p in bounds(addr, im.shape)]
+            p1, p2 = [np.dot(R, np.vstack(p)) + t for p in bounds(addr, shape(im))]
 
             return rot(im, a), points2extent(p1.ravel(), p2.ravel())
 
