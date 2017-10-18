@@ -128,10 +128,13 @@ class DGGS(object):
 
         return v
 
-    def pixel_coord_transform(self, addr, w=0, h=0):
+    def pixel_coord_transform(self, addr, w=0, h=0, dst_proj=None):
         """
            Return method that can map pixel coord x,y to lon,lat
         """
+        if isinstance(dst_proj, (str, dict)):
+            dst_proj = pyproj.Proj(dst_proj)
+
         top_cell, x0, y0, scale_level = self.addr2ixys(addr)
         pix2rh = self.mk_norm(top_cell, scale_level)
 
@@ -146,17 +149,23 @@ class DGGS(object):
 
         rh = self._rh
 
+        # TODO: make caching version
         def pix2lonlat(x, y, radians=False):
             x, y = pix2rh(x + x0, y + y0)
             lx, ly = rh(x, y, inverse=True, radians=radians)
             return lx, ly
 
-        # TODO: make caching version
+        def pix2dst(x, y):
+            x, y = pix2rh(x + x0, y + y0)
+            lx, ly = pyproj.transform(rh, dst_proj, x, y)
+            return lx, ly
 
-        return pix2lonlat, (maxW, maxH)
+        transfrom = pix2lonlat if dst_proj is None else pix2dst
 
-    def mk_warper(self, addr, w=0, h=0):
-        tr, (maxW, maxH) = self.pixel_coord_transform(addr, w, h)
+        return transfrom, (maxW, maxH)
+
+    def mk_warper(self, addr, w=0, h=0, src_proj=None):
+        tr, (maxW, maxH) = self.pixel_coord_transform(addr, w, h, dst_proj=src_proj)
 
         w = maxW if w == 0 else w
         h = maxH if h == 0 else h
@@ -164,17 +173,11 @@ class DGGS(object):
         u, v = np.meshgrid(range(w), range(h))
         u, v = [a.astype('float32') for a in tr(u, v)]
 
-        u[u <= -180] = -180  # work-around for polar region numeric artifacts
+        if src_proj is None:
+            u[u <= -180] = -180  # work-around for polar region numeric artifacts
 
-        def warp(src, affine, src_crs=None):
-            if src_crs is None:
-                s_u, s_v = u, v
-            else:
-                # TODO: u,v + src_crs -> s_u, s_v
-                raise NotImplementedError('TODO: CRS')
-
-            src_x, src_y = apply_affine(~affine, s_u, s_v)
-
+        def warp(src, affine):
+            src_x, src_y = apply_affine(~affine, u, v)
             return cv2.remap(src, src_x, src_y, cv2.INTER_CUBIC)
 
         return warp
