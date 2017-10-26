@@ -1,3 +1,5 @@
+import math
+import shapely.geometry
 import numpy as np
 import pyproj
 import cv2
@@ -50,6 +52,22 @@ class DGGS(object):
         self._s = DGGS._compute_norm_factor(self._rh)
         self._rhm = pyproj.Proj(**DGGS.proj_opts)
         self._sm = DGGS._compute_norm_factor(self._rhm)
+        self.equatorial_thresh = self._rh(0, 0.5/self._s - 1e-6, inverse=True)[1]
+
+    @property
+    def top_level_extents(self):
+        """ Returns dictionary of lon-lat extents for 6 top-level cells
+
+        (left, right, bottom, top)
+        """
+        eqt = self.equatorial_thresh
+
+        return dict(N=(-180, 180, +eqt,  +90),
+                    S=(-180, 180,  -90, -eqt),
+                    O=(-180, -90, -eqt, +eqt),
+                    P=( -90,   0, -eqt, +eqt),  # noqa: E201
+                    Q=(   0, +90, -eqt, +eqt),  # noqa: E201
+                    R=(  90, 180, -eqt, +eqt))  # noqa: E201
 
     def mk_norm(self, idx, scale_level, norm_factor=None):
         if norm_factor is None:
@@ -83,42 +101,63 @@ class DGGS(object):
 
         return norm
 
-    def to_ixy(self, lx, ly, scale_level):
+    @staticmethod
+    def _rh_to_ixy(x, y, scale_level, rh_scale):
+
         ss = 3**scale_level
 
-        x, y = self._rh(lx, ly)
-
-        x *= self._s
-        y *= self._s
+        x *= rh_scale
+        y *= rh_scale
         # x in [-2,2], y in [-1.5, 1.5]
 
         x += 2
         y += 1.5
         # x in [0,4], y in [0, 3]
 
-        idx = (y.astype('uint32') << 2) + x.astype('uint32')
-
-        x = (ss*(x - (idx % 4))).astype('uint32')
-        y = (ss*(1 + (idx // 4)) - ss*y).astype('uint32')
+        if isinstance(x, (int, float)):
+            idx = (int(y) << 2) + int(x)
+            x = int(ss*(x - (idx % 4)))
+            y = int(ss*(1 + (idx // 4)) - ss*y)
+        else:
+            idx = (y.astype('uint32') << 2) + x.astype('uint32')
+            x = (ss*(x - (idx % 4))).astype('uint32')
+            y = (ss*(1 + (idx // 4)) - ss*y).astype('uint32')
 
         idx = (idx & 0b111) | (idx >> 3)  # remap 8 -> 1
 
         return idx, x, y
 
-    def to_address(self, lx, ly, scale_level):
-        idx, x, y = self.to_ixy(lx, ly, scale_level)
+    def to_ixy(self, lx, ly, scale_level):
+        x, y = self._rh(lx, ly)
+        return self._rh_to_ixy(x, y, scale_level, self._s)
+
+    def to_address(self, lx, ly, scale_level, native=False):
+        if native:
+            idx, x, y = self._rh_to_ixy(lx, ly, scale_level, self._sm)
+        else:
+            idx, x, y = self.to_ixy(lx, ly, scale_level)
 
         pad_bits = (15 - scale_level)*4
 
         # fill header first
-        v = (idx | 0b1000).astype('uint64') << 60
+        if isinstance(idx, int):
+            array_mode = False
+            v = (idx | 0b1000) << 60
+            cell = 0
+        else:
+            array_mode = True
+            v = (idx | 0b1000).astype('uint64') << 60
+            cell = np.empty_like(v)
+
         # fill padding bits
         v |= (0xFFFFFFFFFFFFFFFF >> (64-pad_bits))
 
-        cell = np.empty_like(v)
-
         for i in range(scale_level):
-            cell[:] = ((x % 3) + 3*(y % 3))
+            if array_mode:
+                cell[:] = ((x % 3) + 3*(y % 3))
+            else:
+                cell = ((x % 3) + 3*(y % 3))
+
             cell <<= pad_bits
             v |= cell
 
@@ -126,16 +165,67 @@ class DGGS(object):
             x = x//3
             y = y//3
 
+        if not array_mode:
+            return DGGS.i2n[idx] + '{:16x}'.format(v)[1:scale_level+1]
+
         return v
 
-    def pixel_coord_transform(self, addr, w=0, h=0, dst_proj=None):
+    def compute_overlap(self, scale_level, border_x, border_y, crs=None, tol=1e-4):
+        """Returns a list of triplets (address, width, height) that fully enclose a
+        shape specified by a boundary (border_x, border_y, crs)
+
+        If crs is not supplied then border_x, border_y is assumed to be in
+        lonlat on WG84.
+
+        """
+        if crs is None:
+            lx, ly = border_x, border_y
+        else:
+            # TODO: deal with possible geoid differences, this should really be
+            #       using transform function going into lonlat on WGS84
+            prj = pyproj.Proj(crs)
+            lx, ly = prj(border_x, border_y, inverse=True)
+
+        src_poly = shapely.geometry.Polygon(np.vstack([lx, ly]).T)
+
+        to_pix = self._sm*(3**scale_level)
+
+        out = []
+
+        for c, box in self.top_level_extents.items():
+            xmin, xmax, ymin, ymax = box
+            # TODO: don't like this use of tolerances. Ideally we should have a
+            # method that projects into the reference frame of the chosen top
+            # level cell we can then clamp in there.
+            cell = shapely.geometry.box(xmin+tol, ymin+tol, xmax-tol, ymax-tol)
+            overlap = cell.intersection(src_poly)
+
+            if not overlap.is_empty:
+                ov_ = shapely.ops.transform(lambda x, y: self._rhm(x, y), overlap)
+
+                rh_box = ov_.bounds
+                x1, y1, x2, y2 = rh_box
+                addr = self.to_address(x1, y2, scale_level, native=True)  # Use top-left corner for address
+                dx = math.ceil((x2-x1) * to_pix)
+                dy = math.ceil((y2-y1) * to_pix)
+                out.append((addr, dx, dy))
+
+        return out
+
+    def pixel_coord_transform(self, addr, w=0, h=0, dst_proj=None, no_offset=False):
         """
            Return method that can map pixel coord x,y to lon,lat
         """
+        assert isinstance(addr, (str, tuple))
+
         if isinstance(dst_proj, (str, dict)):
             dst_proj = pyproj.Proj(dst_proj)
 
-        top_cell, x0, y0, scale_level = self.addr2ixys(addr)
+        if isinstance(addr, str):
+            top_cell, x0, y0, scale_level = self.addr2ixys(addr)
+        elif isinstance(addr, tuple):
+            top_cell, x0, y0, scale_level = addr
+
         pix2rh = self.mk_norm(top_cell, scale_level)
 
         side = 3**scale_level
@@ -143,9 +233,10 @@ class DGGS(object):
         maxW = side - x0
         maxH = side - y0
 
-        # translate to pixel centre
-        x0 += 0.5
-        y0 += 0.5
+        if no_offset is False:
+            # translate to pixel centre
+            x0 += 0.5
+            y0 += 0.5
 
         rh = self._rh
 
@@ -176,9 +267,9 @@ class DGGS(object):
         if src_proj is None:
             u[u <= -180] = -180  # work-around for polar region numeric artifacts
 
-        def warp(src, affine):
+        def warp(src, affine, nodata=0):
             src_x, src_y = apply_affine(~affine, u, v)
-            return cv2.remap(src, src_x, src_y, cv2.INTER_CUBIC)
+            return cv2.remap(src, src_x, src_y, cv2.INTER_CUBIC, borderValue=nodata)
 
         return warp
 
