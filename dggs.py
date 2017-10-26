@@ -175,7 +175,7 @@ class DGGS(object):
         shape specified by a boundary (border_x, border_y, crs)
 
         If crs is not supplied then border_x, border_y is assumed to be in
-        lonlat on WG84.
+        lonlat on WGS84.
 
         """
         if crs is None:
@@ -303,13 +303,14 @@ class DGGS(object):
         if south_square == 0 and north_square == 0:
             return simple
 
+        # Rotation is clockwise
         RR = {
             0: np.eye(2),
-            90: np.asarray([[0, -1],
-                            [1, +0]], dtype='float32'),
+            270: np.asarray([[0, -1],
+                             [1, +0]], dtype='float32'),
 
-            270: np.asarray([[+0, 1],
-                             [-1, 0]], dtype='float32'),
+            90: np.asarray([[+0, 1],
+                            [-1, 0]], dtype='float32'),
 
             180: np.asarray([[-1,  0],
                              [+0, -1]], dtype='float32'),
