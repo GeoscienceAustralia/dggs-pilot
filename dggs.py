@@ -1,5 +1,6 @@
 import math
 import shapely.geometry
+import shapely.ops
 import numpy as np
 import pyproj
 import cv2
