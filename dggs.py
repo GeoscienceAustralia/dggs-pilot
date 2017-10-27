@@ -19,6 +19,7 @@ class DGGS(object):
                      no_defs=True,
                      wkext=True,
                      datum='WGS84',
+                     ellps='WGS84',
                      lat_0=0,
                      south_square=0,
                      north_square=0)
@@ -256,7 +257,10 @@ class DGGS(object):
 
         return transfrom, (maxW, maxH)
 
-    def mk_warper(self, addr, w=0, h=0, src_proj=None):
+    def mk_warper(self, addr, w=0, h=0, src_proj=None, src_crs=None):
+        if (src_proj is None) and (src_crs is not None):
+            src_proj = pyproj.Proj(src_crs)
+
         tr, (maxW, maxH) = self.pixel_coord_transform(addr, w, h, dst_proj=src_proj)
 
         w = maxW if w == 0 else w
