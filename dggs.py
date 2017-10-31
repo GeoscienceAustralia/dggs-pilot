@@ -272,9 +272,18 @@ class DGGS(object):
         if src_proj is None:
             u[u <= -180] = -180  # work-around for polar region numeric artifacts
 
-        def warp(src, affine, nodata=0):
+        human2cv = dict(linear=cv2.INTER_LINEAR,
+                        nearest=cv2.INTER_NEAREST,
+                        cubic=cv2.INTER_CUBIC,
+                        area=cv2.INTER_AREA,
+                        lanczos4=cv2.INTER_LANCZOS4)
+
+        def warp(src, affine, nodata=0, inter=None):
+            inter = inter if inter else 'linear'
+            assert inter in human2cv
+
             src_x, src_y = apply_affine(~affine, u, v)
-            return cv2.remap(src, src_x, src_y, cv2.INTER_CUBIC, borderValue=nodata)
+            return cv2.remap(src, src_x, src_y, human2cv[inter], borderValue=nodata)
 
         return warp
 

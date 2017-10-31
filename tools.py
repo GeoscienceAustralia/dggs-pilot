@@ -133,7 +133,7 @@ def convert_global(src_file, dst_file, scale_level, band_names=None, combine_ban
     return cells
 
 
-def convert(src_file, dst_file, scale_level, band_names=None):
+def convert(src_file, dst_file, scale_level, band_names=None, inter=None):
     import rasterio
     import h5py
     from .dggs import DGGS
@@ -204,7 +204,7 @@ def convert(src_file, dst_file, scale_level, band_names=None):
         out = []
 
         for band, nodata in zip(bands, nodatavals):
-            im = wrp(band, affine, nodata)
+            im = wrp(band, affine, nodata, inter=inter)
             out.append(im)
 
         if has_valid_data(out):
@@ -225,8 +225,10 @@ def convert(src_file, dst_file, scale_level, band_names=None):
                 band = bands[i]
                 nodata = nodatavals[i]
                 chunks = get_chunks(band.shape, chunk_size)
-                g.create_dataset(addr, data=band, chunks=chunks, **opts)
-                # TODO: attributes, _FillValue
+                g.create_dataset(addr, data=band,
+                                 chunks=chunks,
+                                 fillvalue=nodata,
+                                 **opts)
 
         f.close()
 
