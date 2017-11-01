@@ -28,8 +28,8 @@ def add_cell_plot(cell_addr, style='-', ax=None,  w=None, h=None, crs=None):
     h = maxH if h is None else h
 
     bb = 0.5 - 1e-8
-    x = np.linspace(-bb, w - 1 + bb, w)
-    y = np.linspace(-bb, h - 1 + bb, h)
+    x = np.linspace(-bb, w - 1 + bb, w+1)
+    y = np.linspace(-bb, h - 1 + bb, h+1)
     x, y = polygon_path(x, y)
 
     u, v = tr(x, y)
