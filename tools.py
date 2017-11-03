@@ -166,7 +166,10 @@ def convert(src_file, dst_file, scale_level, band_names=None, inter=None):
 
     def has_valid_data(bands):
         for band, nodata in zip(bands, nodatavals):
-            if np.isnan(nodata):
+            if nodata is None:
+                return True
+
+            if band.dtype.kind == 'f' and np.isnan(nodata):
                 empty = np.isnan(band).all()
             else:
                 empty = (band == nodata).all()
@@ -195,6 +198,10 @@ def convert(src_file, dst_file, scale_level, band_names=None, inter=None):
 
     num_bands = len(bands)
     dg = DGGS()
+
+    print('CRS:', src_crs)
+    print('Affine:', affine)
+    print('nodata:', nodata)
 
     cells = {}
     boundary_x, boundary_y = polygon_path(src_x, src_y)

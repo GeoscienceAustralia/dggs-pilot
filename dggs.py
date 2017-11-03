@@ -54,7 +54,7 @@ class DGGS(object):
         self._s = DGGS._compute_norm_factor(self._rh)
         self._rhm = pyproj.Proj(**DGGS.proj_opts)
         self._sm = DGGS._compute_norm_factor(self._rhm)
-        self.equatorial_thresh = self._rh(0, 0.5/self._s - 1e-6, inverse=True)[1]
+        self.equatorial_thresh = self._rhm(0, 0.5/self._sm - 1e-6, inverse=True)[1]
 
     @property
     def top_level_extents(self):
@@ -73,7 +73,7 @@ class DGGS(object):
 
     def mk_norm(self, idx, scale_level, norm_factor=None):
         if norm_factor is None:
-            norm_factor = self._s
+            norm_factor = self._sm
 
         OFFSET = ((0, 0), (0, 2), None, None,
                   (0, 1), (1, 1), (2, 1), (3, 1))
@@ -130,8 +130,8 @@ class DGGS(object):
         return idx, x, y
 
     def to_ixy(self, lx, ly, scale_level):
-        x, y = self._rh(lx, ly)
-        return self._rh_to_ixy(x, y, scale_level, self._s)
+        x, y = self._rhm(lx, ly)
+        return self._rh_to_ixy(x, y, scale_level, self._sm)
 
     def to_address(self, lx, ly, scale_level, native=False):
         if native:
@@ -214,7 +214,7 @@ class DGGS(object):
 
         return out
 
-    def pixel_coord_transform(self, addr, w=0, h=0, dst_proj=None, no_offset=False):
+    def pixel_coord_transform(self, addr, w=0, h=0, dst_proj=None, no_offset=False, native=False):
         """
            Return method that can map pixel coord x,y to lon,lat
         """
@@ -228,7 +228,8 @@ class DGGS(object):
         elif isinstance(addr, tuple):
             top_cell, x0, y0, scale_level = addr
 
-        pix2rh = self.mk_norm(top_cell, scale_level)
+        rh = self._rhm
+        pix2rh = self.mk_norm(top_cell, scale_level, self._sm)
 
         side = 3**scale_level
 
@@ -239,8 +240,6 @@ class DGGS(object):
             # translate to pixel centre
             x0 += 0.5
             y0 += 0.5
-
-        rh = self._rh
 
         # TODO: make caching version
         def pix2lonlat(x, y, radians=False):
@@ -253,9 +252,17 @@ class DGGS(object):
             lx, ly = pyproj.transform(rh, dst_proj, x, y)
             return lx, ly
 
-        transfrom = pix2lonlat if dst_proj is None else pix2dst
+        def pix2native(x, y):
+            return pix2rh(x + x0, y + y0)
 
-        return transfrom, (maxW, maxH)
+        if native:
+            transform = pix2native
+        elif dst_proj:
+            transform = pix2dst
+        else:
+            transform = pix2lonlat
+
+        return transform, (maxW, maxH)
 
     def mk_warper(self, addr, w=0, h=0, src_proj=None, src_crs=None):
         if (src_proj is None) and (src_crs is not None):
@@ -281,6 +288,8 @@ class DGGS(object):
         def warp(src, affine, nodata=0, inter=None):
             inter = inter if inter else 'linear'
             assert inter in human2cv
+            if nodata is None:
+                nodata = 0
 
             src_x, src_y = apply_affine(~affine, u, v)
             return cv2.remap(src, src_x, src_y, human2cv[inter], borderValue=nodata)

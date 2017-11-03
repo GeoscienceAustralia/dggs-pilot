@@ -21,11 +21,11 @@ def plot_bbox(extents, style='-', ax=None, **kwargs):
     return ax.plot(*polygon_path(extents[:2], extents[2:]), style, **kwargs)
 
 
-def add_cell_plot(cell_addr, style='-', ax=None,  w=None, h=None, crs=None):
-    tr, (maxW, maxH) = dg.pixel_coord_transform(cell_addr, w, h, dst_proj=crs)
+def add_cell_plot(cell_addr, style='-', ax=None,  w=1, h=1, crs=None, native=False, **kwargs):
+    tr, (maxW, maxH) = dg.pixel_coord_transform(cell_addr, w, h, dst_proj=crs, native=native)
 
-    w = maxW if w is None else w
-    h = maxH if h is None else h
+    w = maxW if w == 'max' else w
+    h = maxH if h == 'max' else h
 
     bb = 0.5 - 1e-8
     x = np.linspace(-bb, w - 1 + bb, w+1)
@@ -35,4 +35,4 @@ def add_cell_plot(cell_addr, style='-', ax=None,  w=None, h=None, crs=None):
     u, v = tr(x, y)
 
     ax = _get_ax(ax)
-    ax.plot(u, v, style)
+    ax.plot(u, v, style, **kwargs)
