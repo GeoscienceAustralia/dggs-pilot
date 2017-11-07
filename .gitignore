@@ -1,2 +1,4 @@
 *.pyc
 /notebooks/.ipynb_checkpoints/*
+*.png
+*.h5
