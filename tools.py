@@ -306,3 +306,14 @@ def h5_load(fname, bands=None):
 
         return {addr: read_bands(f, addr, shape, bands)
                 for (addr, shape) in sites.items()}
+
+
+def load_polygons(fname):
+    import fiona
+    from shapely.geometry import shape
+
+    with fiona.open(fname, 'r') as f:
+        polygons = [shape(g['geometry'])
+                    for g in f.values() if g['geometry']['type'] == 'Polygon']
+
+        return polygons, f.crs
