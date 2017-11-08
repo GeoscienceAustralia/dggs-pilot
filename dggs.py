@@ -50,8 +50,6 @@ class DGGS(object):
         return idx, x, y, len(cells)
 
     def __init__(self):
-        self._rh = pyproj.Proj(a=1, **DGGS.proj_opts)
-        self._s = DGGS._compute_norm_factor(self._rh)
         self._rhm = pyproj.Proj(**DGGS.proj_opts)
         self._sm = DGGS._compute_norm_factor(self._rhm)
         self.equatorial_thresh = self._rhm(0, 0.5/self._sm - 1e-6, inverse=True)[1]
@@ -315,8 +313,8 @@ class DGGS(object):
 
         return warp
 
-    def mk_display_helper(self, south_square=0, north_square=0, meters=True):
-        norm_factor = self._sm if meters else self._s
+    def mk_display_helper(self, south_square=0, north_square=0):
+        norm_factor = self._sm
 
         def shape(a):
             if isinstance(a, (tuple, list)):
