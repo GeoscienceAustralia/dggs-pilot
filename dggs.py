@@ -72,6 +72,9 @@ class DGGS(object):
                     R=(  90, 180, -eqt, +eqt))  # noqa: E201
 
     def mk_norm(self, idx, scale_level, norm_factor=None):
+        if isinstance(idx, str):
+            idx = self.n2i[idx]
+
         if norm_factor is None:
             norm_factor = self._sm
 
@@ -99,8 +102,16 @@ class DGGS(object):
         # 3. Offset based on top-level cell position
 
         def norm(x, y):
+            """ "pixel coords" => meters in rHealPix
+            """
             return x*s_x + off_x, y*s_y + off_y
 
+        def norm_inverse(x, y):
+            """ meters in rHealPix => "pixel coords"
+            """
+            return (x - off_x)/s_x, (y - off_y)/s_y
+
+        norm.inverse = norm_inverse
         return norm
 
     @staticmethod
@@ -254,6 +265,14 @@ class DGGS(object):
 
         def pix2native(x, y):
             return pix2rh(x + x0, y + y0)
+
+        def pix2native_inv(mx, my):
+            x, y = pix2rh.inverse(mx, my)
+            x -= x0
+            y -= y0
+            return x, y
+
+        pix2native.inverse = pix2native_inv
 
         if native:
             transform = pix2native
