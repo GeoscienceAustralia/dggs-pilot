@@ -26,16 +26,6 @@ def polygon_path(x, y=None):
         np.vstack([np.full_like(y, x[0]), y]).T[::-1][1:]]).T
 
 
-def apply_affine(A, x, y):
-    assert x.shape == y.shape
-    assert hasattr(A, '__mul__')
-
-    sh = x.shape
-
-    x, y = A*np.vstack([x.ravel(), y.ravel()])
-    return x.reshape(sh), y.reshape(sh)
-
-
 def spread_num_samples(v):
     v_int = np.floor(v).astype('uint32')
     n_partials = int(v.sum() - v_int.sum())
