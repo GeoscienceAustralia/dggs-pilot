@@ -1,3 +1,4 @@
+import array
 import math
 import shapely.geometry
 import shapely.ops
@@ -116,6 +117,14 @@ class DGGS(object):
     @staticmethod
     def _rh_to_ixy(x, y, scale_level, rh_scale):
 
+        def norm_array(a):
+            if isinstance(a, array.array):
+                return np.asarray(a)
+            return a
+
+        x = norm_array(x)
+        y = norm_array(y)
+
         ss = 3**scale_level
 
         x *= rh_scale
@@ -139,15 +148,23 @@ class DGGS(object):
 
         return idx, x, y
 
-    def to_ixy(self, lx, ly, scale_level):
-        x, y = self._rhm(lx, ly)
-        return self._rh_to_ixy(x, y, scale_level, self._sm)
+    def to_ixy(self, scale_level, x=None, y=None, crs=None):
+        to_native = self.to_native(crs)
 
-    def to_address(self, lx, ly, scale_level, native=False):
+        def convert(x, y):
+            x, y = to_native(x, y)
+            return self._rh_to_ixy(x, y, scale_level, self._sm)
+
+        if x is None:
+            return convert
+
+        return convert(x, y)
+
+    def to_address(self, scale_level, lx, ly, native=False, crs=None):
         if native:
             idx, x, y = self._rh_to_ixy(lx, ly, scale_level, self._sm)
         else:
-            idx, x, y = self.to_ixy(lx, ly, scale_level)
+            idx, x, y = self.to_ixy(scale_level, lx, ly, crs=crs)
 
         pad_bits = (15 - scale_level)*4
 
@@ -200,10 +217,29 @@ class DGGS(object):
 
         raise ValueError('Not sure how to convert to pyproj.Proj')
 
-    def to_lonlat(self, x, y, crs):
+    def to_lonlat(self, crs, x, y):
         """ Convert to lonlat on the right kind of datum for rHealPix.
         """
-        return pyproj.transform(self._as_proj(crs), self._prj_lonlat, x, y)
+        src_prj = self._as_proj(crs)
+
+        def convert(x, y, z=None):
+            return pyproj.transform(src_prj, self._prj_lonlat, x, y)
+
+        if x is None:
+            return convert
+
+        return convert(x, y)
+
+    def to_native(self, crs=None, x=None, y=None):
+        src_prj = self._prj_lonlat if crs is None else self._as_proj(crs)
+
+        def convert(x, y, z=None):
+            return pyproj.transform(src_prj, self._rhm, x, y, z)
+
+        if x is None:
+            return convert
+
+        return convert(x, y)
 
     def compute_overlap(self, scale_level, border_x, border_y, crs=None, tol=1e-4):
         """Returns a list of triplets (address, width, height) that fully enclose a
@@ -216,7 +252,7 @@ class DGGS(object):
         if crs is None:
             lx, ly = border_x, border_y
         else:
-            lx, ly = self.to_lonlat(border_x, border_y, crs)
+            lx, ly = self.to_lonlat(crs, border_x, border_y)
 
         src_poly = shapely.geometry.Polygon(np.vstack([lx, ly]).T)
 
@@ -237,7 +273,7 @@ class DGGS(object):
 
                 rh_box = ov_.bounds
                 x1, y1, x2, y2 = rh_box
-                addr = self.to_address(x1, y2, scale_level, native=True)  # Use top-left corner for address
+                addr = self.to_address(scale_level, x1, y2, native=True)  # Use top-left corner for address
                 dx = math.ceil((x2-x1) * to_pix)
                 dy = math.ceil((y2-y1) * to_pix)
                 out.append((addr, dx, dy))
@@ -246,7 +282,7 @@ class DGGS(object):
 
     def pixel_coord_transform(self, addr, w=0, h=0, dst_crs=None, no_offset=False, native=False):
         """
-           Return method that can map pixel coord x,y to lon,lat
+           Return method that can map pixel coord x,y to coordinate system defined by dst_crs
         """
         dst_proj = self._as_proj(dst_crs)
 
