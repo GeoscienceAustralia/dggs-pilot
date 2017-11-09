@@ -22,7 +22,7 @@ def plot_bbox(extents, style='-', ax=None, **kwargs):
 
 
 def add_cell_plot(cell_addr, style='-', ax=None,  w=1, h=1, crs=None, native=False, **kwargs):
-    tr, (maxW, maxH) = dg.pixel_coord_transform(cell_addr, w, h, dst_proj=crs, native=native)
+    tr, (maxW, maxH) = dg.pixel_coord_transform(cell_addr, w, h, dst_crs=crs, native=native)
 
     w = maxW if w == 'max' else w
     h = maxH if h == 'max' else h

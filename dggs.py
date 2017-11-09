@@ -52,6 +52,7 @@ class DGGS(object):
     def __init__(self):
         self._rhm = pyproj.Proj(**DGGS.proj_opts)
         self._sm = DGGS._compute_norm_factor(self._rhm)
+        self._prj_lonlat = pyproj.Proj(self._rhm.to_latlong().srs.decode())
         self.equatorial_thresh = self._rhm(0, 0.5/self._sm - 1e-6, inverse=True)[1]
 
     @property
@@ -181,6 +182,29 @@ class DGGS(object):
 
         return v
 
+    def _as_proj(self, crs):
+        if isinstance(crs, pyproj.Proj):
+            return crs
+
+        if isinstance(crs, (str, dict)):
+            if crs == 'native':
+                return self._rhm
+
+            return pyproj.Proj(crs)
+
+        if crs is None:
+            return None
+
+        if hasattr(crs, '__getitem__'):
+            return pyproj.Proj(crs)
+
+        raise ValueError('Not sure how to convert to pyproj.Proj')
+
+    def to_lonlat(self, x, y, crs):
+        """ Convert to lonlat on the right kind of datum for rHealPix.
+        """
+        return pyproj.transform(self._as_proj(crs), self._prj_lonlat, x, y)
+
     def compute_overlap(self, scale_level, border_x, border_y, crs=None, tol=1e-4):
         """Returns a list of triplets (address, width, height) that fully enclose a
         shape specified by a boundary (border_x, border_y, crs)
@@ -192,10 +216,7 @@ class DGGS(object):
         if crs is None:
             lx, ly = border_x, border_y
         else:
-            # TODO: deal with possible geoid differences, this should really be
-            #       using transform function going into lonlat on WGS84
-            prj = pyproj.Proj(crs)
-            lx, ly = prj(border_x, border_y, inverse=True)
+            lx, ly = self.to_lonlat(border_x, border_y, crs)
 
         src_poly = shapely.geometry.Polygon(np.vstack([lx, ly]).T)
 
@@ -223,14 +244,13 @@ class DGGS(object):
 
         return out
 
-    def pixel_coord_transform(self, addr, w=0, h=0, dst_proj=None, no_offset=False, native=False):
+    def pixel_coord_transform(self, addr, w=0, h=0, dst_crs=None, no_offset=False, native=False):
         """
            Return method that can map pixel coord x,y to lon,lat
         """
-        assert isinstance(addr, (str, tuple))
+        dst_proj = self._as_proj(dst_crs)
 
-        if isinstance(dst_proj, (str, dict)):
-            dst_proj = pyproj.Proj(dst_proj)
+        assert isinstance(addr, (str, tuple))
 
         if isinstance(addr, str):
             top_cell, x0, y0, scale_level = self.addr2ixys(addr)
@@ -281,11 +301,10 @@ class DGGS(object):
 
         return transform, (maxW, maxH)
 
-    def mk_warper(self, addr, w=0, h=0, src_proj=None, src_crs=None):
-        if (src_proj is None) and (src_crs is not None):
-            src_proj = pyproj.Proj(src_crs)
+    def mk_warper(self, addr, w=0, h=0, src_crs=None):
+        src_proj = self._as_proj(src_crs)
 
-        tr, (maxW, maxH) = self.pixel_coord_transform(addr, w, h, dst_proj=src_proj)
+        tr, (maxW, maxH) = self.pixel_coord_transform(addr, w, h, dst_crs=src_proj)
 
         w = maxW if w == 0 else w
         h = maxH if h == 0 else h
