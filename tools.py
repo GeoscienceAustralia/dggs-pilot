@@ -1,5 +1,4 @@
 import numpy as np
-import xarray as xr
 import h5py
 
 
@@ -128,6 +127,7 @@ def convert_global(src_file, dst_file, scale_level, band_names=None, combine_ban
 def convert(src_file, dst_file, scale_level, band_names=None, inter=None):
     import rasterio
     from .dggs import DGGS
+    from .dggs.io import H5Writer
 
     if isinstance(band_names, str):
         band_names = [band_names]
@@ -148,11 +148,6 @@ def convert(src_file, dst_file, scale_level, band_names=None, inter=None):
             nodata = np.nan
 
         return band, nodata
-
-    def get_chunks(shape, xy_size):
-        a = min(shape[0], xy_size)
-        b = min(shape[1], xy_size)
-        return (a, b) + shape[2:]
 
     def has_valid_data(bands):
         for band, nodata in zip(bands, nodatavals):
@@ -210,35 +205,31 @@ def convert(src_file, dst_file, scale_level, band_names=None, inter=None):
 
     chunk_size = 3**5  # TODO: probably needs to be dynamic
 
-    opts = dict(compression='gzip',
-                shuffle=True)
-
-    with h5py.File(dst_file, 'w') as f:
+    with H5Writer(dst_file, chunk_size=chunk_size) as write:
         for i in range(num_bands):
             band_name = get_band_name(i)
             print('Saving band: {band_name}'.format(band_name=band_name))
 
-            g = f.create_group(band_name)
             for (addr, bands) in cells.items():
-                band = bands[i]
                 nodata = nodatavals[i]
-                chunks = get_chunks(band.shape, chunk_size)
-                g.create_dataset(addr, data=band,
-                                 chunks=chunks,
-                                 fillvalue=nodata,
-                                 **opts)
 
-        f.close()
+                write(addr, band_name,
+                      data=bands[i],
+                      nodata=nodata)
 
     return cells
 
 
-def load_polygons(fname):
+def load_shapes(fname, pred=lambda _: True):
     import fiona
     from shapely.geometry import shape
 
     with fiona.open(fname, 'r') as f:
-        polygons = [shape(g['geometry'])
-                    for g in f.values() if g['geometry']['type'] == 'Polygon']
+        shapes = [shape(g['geometry'])
+                  for g in f.values() if pred(g)]
 
-        return polygons, f.crs
+        return shapes, f.crs
+
+
+def load_polygons(fname):
+    return load_shapes(fname, lambda g: g['geometry']['type'] == 'Polygon')

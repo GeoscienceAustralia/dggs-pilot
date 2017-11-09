@@ -66,3 +66,40 @@ def h5_load(fname, bands=None):
 
         return {addr: read_bands(f, addr, shape, bands)
                 for (addr, shape) in sites.items()}
+
+
+class H5Writer(object):
+    def __init__(self, fname, chunk_size=3**5):
+        self.fname = fname
+        self._chunk_size = chunk_size
+        self._f = None
+        self._opts = dict(compression='gzip',
+                          shuffle=True)
+
+    def _chunks(self, shape):
+        a = min(shape[0], self._chunk_size)
+        b = min(shape[1], self._chunk_size)
+        return (a, b) + shape[2:]
+
+    def __enter__(self):
+        self._f = h5py.File(self.fname, 'w')
+        return self
+
+    def __exit__(self, t, v, traceback):
+        self._f.close()
+        self._f = None
+
+    def __call__(self, addr, band, data, nodata=None):
+        f = self._f
+        g = f.get(band)
+
+        if g is None:
+            g = f.create_group(band)
+        elif not isinstance(g, h5py.Group):
+            raise IOError('TODO: fix error message')
+
+        g.create_dataset(addr,
+                         data=data,
+                         chunks=self._chunks(data.shape),
+                         fillvalue=nodata,
+                         **self._opts)
