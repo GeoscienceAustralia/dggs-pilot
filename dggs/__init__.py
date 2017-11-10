@@ -13,6 +13,8 @@ class DGGS(object):
                O=4, P=5, Q=6, R=7,
                N=1)
 
+    i2n_dict = {v: k for k, v in n2i.items()}
+
     i2n = np.r_[['S', 'N', '_', '_',
                  'O', 'P', 'Q', 'R']]
 
@@ -24,6 +26,18 @@ class DGGS(object):
                      lat_0=0,
                      south_square=0,
                      north_square=0)
+
+    @staticmethod
+    def _round_down(v, scale_level):
+        s = 3**scale_level
+        return v - (v % s)
+
+    @staticmethod
+    def _round_up(v, scale_level):
+        s = 3**scale_level
+        if v % s == 0:
+            return v
+        return v + (s - (v % s))
 
     @staticmethod
     def _compute_norm_factor(rh):
@@ -49,6 +63,165 @@ class DGGS(object):
             y = y*3 + (v // 3)
 
         return idx, x, y, len(cells)
+
+    @staticmethod
+    def ixys2addr(idx, x, y, scale_level):
+        code = DGGS.i2n_dict.get(idx)
+
+        if code is None:
+            raise ValueError('Incorrect idx')
+
+        s = ''
+        for i in range(scale_level):
+            cell = ((x % 3)) + 3*(y % 3)
+            s = str(cell) + s
+
+            x = x//3
+            y = y//3
+
+        if x > 0 or y > 0:
+            raise ValueError('Wrong x,y -- too large')
+
+        return code + s
+
+    class Address(object):
+        def __init__(self, val):
+            if isinstance(val, str):
+                addr = val
+                idx, x, y, scale = DGGS.addr2ixys(val)
+            elif isinstance(val, tuple):
+                addr = DGGS.ixys2addr(*val)
+                idx, x, y, scale = val
+
+            self.addr = addr
+            self._ixys = (idx, x, y, scale)
+
+        @property
+        def scale(self):
+            return self._ixys[3]
+
+        @property
+        def x(self):
+            return self._ixys[1]
+
+        @property
+        def y(self):
+            return self._ixys[2]
+
+        @property
+        def xy(self):
+            return self._ixys[1:3]
+
+        def __iter__(self):
+            return iter(self._ixys)
+
+        def __eq__(self, o):
+            return o.addr == self.addr
+
+        def __add__(self, offset):
+            dx, dy = offset
+            idx, x, y, scale = self._ixys
+            x += dx
+            y += dy
+
+            max_valid = (3**scale) - 1
+            if x < 0 or y < 0 or x > max_valid or y > max_valid:
+                raise OverflowError("Not a valid address after offset")
+
+            return DGGS.Address((idx, x, y, scale))
+
+        def __sub__(self, a):
+            """Given two addresses at the same level and in the same top-level cell,
+               computes distance in pixel along x and y dimensions.
+
+               a - b => (dx, dy) | None if undefined
+            """
+
+            if isinstance(a, tuple):
+                return self.__add__((-a[0], -a[1]))
+
+            if isinstance(a, str):
+                return self.__sub__(DGGS.Address(a))
+
+            if isinstance(a, DGGS.Address):
+                x1, y1 = self._ixys[1:3]
+                x2, y2 = a._ixys[1:3]
+                return (x1 - x2, y1 - y2)
+
+            raise ValueError('Accept (x,y) or other address only')
+
+        def round_by(self, levels_up):
+            if levels_up <= 0:
+                return self
+
+            x, y = (DGGS._round_down(v, levels_up) for v in self.xy)
+            idx = self._ixys[0]
+            return DGGS.Address((idx, x, y, self.scale))
+
+        def round_to(self, scale_level):
+            return self.round_by(self.scale - scale_level)
+
+        def scale_up(self, num_levels):
+            if num_levels > self.scale:
+                return DGGS.Address(self.addr[0])
+            return DGGS.Address(self.addr[:-num_levels])
+
+        def scale_down(self, num_levels, center=False):
+            c = '4' if center else '0'
+            return DGGS.Address(self.addr + (c*num_levels))
+
+        def __str__(self):
+            return self.addr
+
+        def __repr__(self):
+            return self.addr
+
+    class ROI(object):
+        def __init__(self, addr, w=1, h=1):
+            if isinstance(addr, str):
+                addr = DGGS.Address(addr)
+            self.addr = addr
+            self.w = w
+            self.h = h
+
+        def __iter__(self):
+            yield self.addr
+            yield self.w
+            yield self.h
+
+        def __eq__(self, o):
+            return tuple(self) == tuple(o)
+
+        def __str__(self):
+            return f'{self.addr} {self.w}x{self.h}'
+
+        def __repr__(self):
+            return self.__str__()
+
+        def align_by(self, levels_up):
+            """Expand region so that address and size align to given scale
+            Returns expanded region
+            """
+            if levels_up <= 0:
+                return self
+
+            addr, w, h = self
+            addr_new = addr.round_by(levels_up)
+            dw, dh = addr - addr_new
+
+            w = DGGS._round_up(w + dw, levels_up)
+            h = DGGS._round_up(h + dh, levels_up)
+
+            return DGGS.ROI(addr_new, w, h)
+
+        def align_to(self, scale_level):
+            return self.align_by(self.addr.scale - scale_level)
+
+        def scale_up(self, num_levels):
+            addr, w, h = self.align_by(num_levels)
+            s = 3**num_levels
+            w, h = [max(1, v//s) for v in [w, h]]
+            return DGGS.ROI(addr.scale_up(num_levels), w, h)
 
     def __init__(self):
         self._rhm = pyproj.Proj(**DGGS.proj_opts)
@@ -286,11 +459,14 @@ class DGGS(object):
         """
         dst_proj = self._as_proj(dst_crs)
 
-        assert isinstance(addr, (str, tuple))
+        assert isinstance(addr, (str, tuple, DGGS.Address, DGGS.ROI))
+
+        if isinstance(addr, DGGS.ROI):
+            addr, w, h = addr
 
         if isinstance(addr, str):
             top_cell, x0, y0, scale_level = self.addr2ixys(addr)
-        elif isinstance(addr, tuple):
+        elif isinstance(addr, (tuple, DGGS.Address)):
             top_cell, x0, y0, scale_level = addr
 
         rh = self._rhm
