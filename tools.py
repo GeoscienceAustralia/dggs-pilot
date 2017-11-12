@@ -99,7 +99,9 @@ def convert_global(src_file, dst_file, scale_level, band_names=None, combine_ban
         addr = code + '0'*scale_level
         print('Processing:' + addr)
 
-        wrp = dg.mk_warper(addr)
+        roi = DGGS.ROI(addr, 3**scale_level, 3**scale_level)
+
+        wrp = dg.mk_warper(roi)
 
         cells[addr] = [wrp(b, affine) for b in bands]
 
@@ -191,9 +193,9 @@ def convert(src_file, dst_file, scale_level, band_names=None, inter=None):
     cells = {}
     boundary_x, boundary_y = polygon_path(src_x, src_y)
 
-    for addr, w, h in dg.compute_overlap(scale_level, boundary_x, boundary_y, src_crs):
-        print('Processing:' + addr, w, h)
-        wrp = dg.mk_warper(addr, w, h, src_crs=src_crs)
+    for roi in dg.compute_overlap(scale_level, boundary_x, boundary_y, src_crs):
+        print('Processing:' + str(roi))
+        wrp = dg.mk_warper(roi, src_crs=src_crs)
         out = []
 
         for band, nodata in zip(bands, nodatavals):
@@ -201,7 +203,7 @@ def convert(src_file, dst_file, scale_level, band_names=None, inter=None):
             out.append(im)
 
         if has_valid_data(out):
-            cells[addr] = out
+            cells[str(roi.addr)] = out
 
     chunk_size = 3**5  # TODO: probably needs to be dynamic
 

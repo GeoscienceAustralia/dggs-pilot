@@ -36,3 +36,12 @@ def add_cell_plot(cell_addr, style='-', ax=None,  w=1, h=1, crs=None, native=Fal
 
     ax = _get_ax(ax)
     ax.plot(u, v, style, **kwargs)
+
+
+def plot_roi(roi, style='-', ax=None, south_square=0, north_square=0, **kwargs):
+
+    f = dg.mk_display_helper(south_square=south_square,
+                             north_square=north_square)
+
+    _, extents = f(roi.addr, roi.shape)
+    return plot_bbox(extents, style=style, ax=ax, **kwargs)

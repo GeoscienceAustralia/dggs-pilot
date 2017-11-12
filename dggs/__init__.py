@@ -198,6 +198,10 @@ class DGGS(object):
         def __repr__(self):
             return self.__str__()
 
+        @property
+        def shape(self):
+            return (self.h, self.w)
+
         def align_by(self, levels_up):
             """Expand region so that address and size align to given scale
             Returns expanded region
@@ -449,7 +453,7 @@ class DGGS(object):
                 addr = self.to_address(scale_level, x1, y2, native=True)  # Use top-left corner for address
                 dx = math.ceil((x2-x1) * to_pix)
                 dy = math.ceil((y2-y1) * to_pix)
-                out.append((addr, dx, dy))
+                out.append(DGGS.ROI(addr, dx, dy))
 
         return out
 
@@ -513,13 +517,12 @@ class DGGS(object):
 
         return transform, (maxW, maxH)
 
-    def mk_warper(self, addr, w=0, h=0, src_crs=None):
+    def mk_warper(self, roi, src_crs=None):
         src_proj = self._as_proj(src_crs)
 
-        tr, (maxW, maxH) = self.pixel_coord_transform(addr, w, h, dst_crs=src_proj)
+        tr, (maxW, maxH) = self.pixel_coord_transform(roi, dst_crs=src_proj)
 
-        w = maxW if w == 0 else w
-        h = maxH if h == 0 else h
+        h, w = roi.shape
 
         u, v = np.meshgrid(range(w), range(h))
         u, v = [a.astype('float32') for a in tr(u, v)]
@@ -553,7 +556,10 @@ class DGGS(object):
             return a.shape
 
         def bounds(addr, shape, b=1e-6):
-            top_cell, x0, y0, scale_level = self.addr2ixys(addr)
+            if isinstance(addr, str):
+                addr = DGGS.Address(addr)
+
+            top_cell, x0, y0, scale_level = addr
             pix2rh = self.mk_norm(top_cell, scale_level, norm_factor)
 
             h, w = shape[:2]
