@@ -115,6 +115,9 @@ class DGGS(object):
         def __iter__(self):
             return iter(self._ixys)
 
+        def __hash__(self):
+            return hash(self.addr)
+
         def __eq__(self, o):
             return o.addr == self.addr
 
@@ -162,6 +165,9 @@ class DGGS(object):
             return self.round_by(self.scale - scale_level)
 
         def scale_up(self, num_levels):
+            if num_levels == 0:
+                return self
+
             if num_levels > self.scale:
                 return DGGS.Address(self.addr[0])
             return DGGS.Address(self.addr[:-num_levels])
@@ -202,6 +208,10 @@ class DGGS(object):
         def shape(self):
             return (self.h, self.w)
 
+        @property
+        def scale(self):
+            return self.addr.scale
+
         def align_by(self, levels_up):
             """Expand region so that address and size align to given scale
             Returns expanded region
@@ -226,6 +236,70 @@ class DGGS(object):
             s = 3**num_levels
             w, h = [max(1, v//s) for v in [w, h]]
             return DGGS.ROI(addr.scale_up(num_levels), w, h)
+
+        def scale_down(self, num_levels):
+            addr, w, h = self
+            s = 3**num_levels
+            return DGGS.ROI(addr.scale_down(num_levels), w*s, h*s)
+
+    @staticmethod
+    def crop(src, src_roi, crop_roi):
+        if src_roi == crop_roi:
+            return src
+
+        sh, sw = src_roi.shape
+        h, w = crop_roi.shape
+        dx, dy = crop_roi.addr - src_roi.addr
+
+        if dx < 0 or dy < 0 or (dx+w) > sw or (dy+h) > sh:
+            raise ValueError('Crop region is not inside of the source region')
+
+        return src[dy:dy+h, dx:dx+w]
+
+    @staticmethod
+    def pad(src, src_roi, dst_roi, nodata=None):
+        assert src.shape == src_roi.shape
+
+        if src_roi == dst_roi:
+            return src
+
+        # TODO: support n-dimensional data, n>2
+        out = np.empty(dst_roi.shape, dtype=src.dtype)
+        h, w = src.shape
+        (dx, dy) = src_roi.addr - dst_roi.addr
+
+        if nodata is not None:
+            # TODO: efficiency -- only fill boundary instead
+            out[:] = nodata
+
+        out[dy:dy+h, dx:dx+w] = src
+        return out
+
+    @staticmethod
+    def expand(im, roi):
+        from .tools import expand_3x3
+        return expand_3x3(im), roi.scale_down(1)
+
+    @staticmethod
+    def scale_op_sum(im, roi, nodata=None, dtype=None, tight=False):
+        from .tools import nodata_to_num, sum3x3
+        roi_ = roi.align_by(1 if tight else 2)
+        im = DGGS.pad(nodata_to_num(im, nodata), roi, roi_, nodata=0)
+        return sum3x3(im, dtype=dtype), roi_.scale_up(1)
+
+    @staticmethod
+    def scale_op_and(im, roi, tight=False):
+        from .tools import logical_and_3x3
+        roi_ = roi.align_by(1 if tight else 2)
+        im = DGGS.pad(im, roi, roi_, nodata=False)
+        return logical_and_3x3(im), roi_.scale_up(1)
+
+    @staticmethod
+    def scale_op_or(im, roi, tight=False):
+        from .tools import logical_or_3x3
+        roi_ = roi.align_by(1 if tight else 2)
+        im = DGGS.pad(im, roi, roi_, nodata=False)
+        return logical_or_3x3(im), roi_.scale_up(1)
 
     def __init__(self):
         self._rhm = pyproj.Proj(**DGGS.proj_opts)
@@ -419,7 +493,7 @@ class DGGS(object):
         return convert(x, y)
 
     def compute_overlap(self, scale_level, border_x, border_y, crs=None, tol=1e-4):
-        """Returns a list of triplets (address, width, height) that fully enclose a
+        """Returns a list of ROI objects (address,w,h) that fully enclose a
         shape specified by a boundary (border_x, border_y, crs)
 
         If crs is not supplied then border_x, border_y is assumed to be in

@@ -1,6 +1,101 @@
 import numpy as np
 
 
+def nodata_mask(a, nodata=None):
+    """ Returns boolean array with True where there is no valid data
+    """
+    if a.dtype.kind == 'f':
+        if nodata is None or np.isnan(nodata):
+            return np.isnan(a)
+        else:
+            return a == nodata
+    else:
+        if nodata is None:
+            # Integer image without nodata field is always valid everywhere
+            return np.zeros_like(a, dtype='bool')
+        else:
+            return a == nodata
+
+
+def valid_data_mask(a, nodata=None):
+    """ Returns boolean array with True where there is valid data
+    """
+    if a.dtype.kind == 'f':
+        if nodata is None or np.isnan(nodata):
+            return ~np.isnan(a)
+        else:
+            return a != nodata
+    else:
+        if nodata is None:
+            # Integer image without nodata field is always valid everywhere
+            return np.ones_like(a, dtype='bool')
+        else:
+            return a != nodata
+
+
+def nodata_to_num(a, nodata=None):
+    """ Like `numpy.nan_to_num` but supporting nodata values
+
+    Replace nodata values with zeros
+    """
+    if a.dtype.kind == 'f':
+        a = np.nan_to_num(a)
+        if nodata is not None and not np.isnan(nodata):
+            a[a == nodata] = 0
+    else:
+        if nodata is not None:
+            a = a.copy()
+            a[a == nodata] = 0
+        else:
+            pass  # Note output is same data as input, no copy
+
+    return a
+
+
+def sum3x3(a, dtype=None):
+    assert a.shape[0] % 3 == 0 and a.shape[1] % 3 == 0
+
+    if dtype is None:
+        dtype = dict(f='float32',
+                     i='int64',
+                     b='uint64',  # boolean -> uint64
+                     u='uint64').get(a.dtype.kind, a.dtype)
+
+    aa = a[0::3].astype(dtype) + a[1::3].astype(dtype) + a[2::3].astype(dtype)
+    return aa[:, 0::3] + aa[:, 1::3] + aa[:, 2::3]
+
+
+def logical_and_3x3(a):
+    """ Combine 3x3 pixel with logical AND into one output pixel
+    """
+    assert a.dtype == np.bool
+    assert a.shape[0] % 3 == 0 and a.shape[1] % 3 == 0
+    aa = a[0::3, :] * a[1::3, :] * a[2::3, :]
+    return aa[:, 0::3] * aa[:, 1::3] * aa[:, 2::3]
+
+
+def logical_or_3x3(a):
+    """ Combine 3x3 pixel with logical OR into one output pixel
+    """
+    assert a.dtype == np.bool
+    assert a.shape[0] % 3 == 0 and a.shape[1] % 3 == 0
+    return sum3x3(a, dtype=np.bool)
+
+
+def expand_3x3(a):
+    """ Convert every pixel into 3x3 block
+    """
+    (h, w) = a.shape[:2]
+    new_shape = (h*3, w*3) + a.shape[2:]
+    o = np.empty(new_shape, dtype=a.dtype)
+
+    for i in range(3):
+        for j in range(3):
+            o[i::3, j::3] = a
+
+    return o
+
+
 def apply_affine(A, x, y):
     assert x.shape == y.shape
     assert hasattr(A, '__mul__')
