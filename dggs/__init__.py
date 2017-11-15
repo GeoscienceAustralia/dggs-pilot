@@ -172,8 +172,13 @@ class DGGS(object):
                 return DGGS.Address(self.addr[0])
             return DGGS.Address(self.addr[:-num_levels])
 
-        def scale_down(self, num_levels, center=False):
-            c = '4' if center else '0'
+        def scale_down(self, num_levels, mode='tl'):
+            c = dict(tl='0',
+                     tr='2',
+                     c='4',
+                     bl='6',
+                     br='8')[mode]
+
             return DGGS.Address(self.addr + (c*num_levels))
 
         def __str__(self):
@@ -241,6 +246,47 @@ class DGGS(object):
             addr, w, h = self
             s = 3**num_levels
             return DGGS.ROI(addr.scale_down(num_levels), w*s, h*s)
+
+    @staticmethod
+    def roi_from_points(aa, scale=None):
+        if scale is None:
+            scale = max(a.scale for a in aa)
+
+        def update_bounds(bounds, addr):
+            x, y = addr.xy
+            if bounds is None:
+                return (x, x, y, y)
+
+            xmin, xmax, ymin, ymax = bounds
+            return (min(x, xmin), max(x, xmax), min(y, ymin), max(y, ymax))
+
+        def normed_points(aa, scale):
+            for a in aa:
+                if a.scale < scale:
+                    yield a.scale_down(scale - a.scale, mode='tl')
+                    yield a.scale_down(scale - a.scale, mode='br')
+                else:
+                    assert a.scale == scale
+                    yield a
+
+        _i = None
+        bounds = None
+        for a in normed_points(aa, scale):
+            if _i is None:
+                _i, *_ = a._ixys
+
+            if _i != a._ixys[0]:
+                raise ValueError('Currently assumes that all points are in the same top level cell')
+
+            bounds = update_bounds(bounds, a)
+
+        xmin, xmax, ymin, ymax = bounds
+
+        addr = DGGS.Address((_i, xmin, ymin, scale))
+        w = xmax - xmin + 1
+        h = ymax - ymin + 1
+
+        return DGGS.ROI(addr, w, h)
 
     @staticmethod
     def crop(src, src_roi, crop_roi):
