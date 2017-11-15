@@ -245,7 +245,7 @@ class DGGS(object):
     @staticmethod
     def crop(src, src_roi, crop_roi):
         if src_roi == crop_roi:
-            return src
+            return src, src_roi
 
         sh, sw = src_roi.shape
         h, w = crop_roi.shape
@@ -254,7 +254,7 @@ class DGGS(object):
         if dx < 0 or dy < 0 or (dx+w) > sw or (dy+h) > sh:
             raise ValueError('Crop region is not inside of the source region')
 
-        return src[dy:dy+h, dx:dx+w]
+        return src[dy:dy+h, dx:dx+w], crop_roi
 
     @staticmethod
     def pad(src, src_roi, dst_roi, nodata=None):
@@ -279,6 +279,20 @@ class DGGS(object):
     def expand(im, roi):
         from .tools import expand_3x3
         return expand_3x3(im), roi.scale_down(1)
+
+    @staticmethod
+    def expand_to_roi(src, src_roi, dst_roi):
+        assert dst_roi.scale >= src_roi.scale
+
+        if dst_roi.scale == src_roi.scale:
+            return DGGS.crop(src, src_roi, dst_roi)
+
+        n = dst_roi.scale - src_roi.scale
+        for i in range(n):
+            src, src_roi = DGGS.expand(src, src_roi)
+            src, src_roi = DGGS.crop(src, src_roi, dst_roi.scale_up(n-i-1))
+
+        return src, src_roi
 
     @staticmethod
     def scale_op_sum(im, roi, nodata=None, dtype=None, tight=False):
