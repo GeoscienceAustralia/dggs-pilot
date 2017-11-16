@@ -248,6 +248,61 @@ class DGGS(object):
             return DGGS.ROI(addr.scale_down(num_levels), w*s, h*s)
 
     @staticmethod
+    def roi_slice(outter, inner):
+        assert inner.scale <= outter.scale
+        if inner.scale < outter.scale:
+            inner = inner.scale_down(outter.scale - inner.scale)
+
+        oh, ow = outter.shape
+        h, w = inner.shape
+        dx, dy = inner.addr - outter.addr
+
+        if dx < 0 or dy < 0 or (dy+h) > oh or (dx+w) > ow:
+            raise ValueError('Inner roi is not inside outter one')
+
+        return (slice(dy, dy+h), slice(dx, dx+w))
+
+    class Image:
+        def __init__(self, im, addr):
+            if isinstance(addr, DGGS.ROI):
+                assert addr.shape == im.shape
+                addr = addr.addr
+
+            self._data = im
+            h, w = im.shape[:2]
+            self._roi = DGGS.ROI(addr, w, h)
+
+        @property
+        def value(self):
+            return self._data
+
+        @property
+        def roi(self):
+            return self._roi
+
+        @property
+        def addr(self):
+            return self._roi.addr
+
+        @property
+        def shape(self):
+            return self._data.shape
+
+        def __repr__(self):
+            return 'Image @ ' + repr(self._roi)
+
+        def __getitem__(self, roi):
+            if isinstance(roi, DGGS.ROI):
+                return self._data[DGGS.roi_slice(self._roi, roi)]
+            return self._data[roi]
+
+        def __setitem__(self, roi, val):
+            if isinstance(roi, DGGS.ROI):
+                self._data.__setitem__(DGGS.roi_slice(self._roi, roi), val)
+            else:
+                self._data.__setitem__(roi, val)
+
+    @staticmethod
     def roi_from_points(aa, scale=None):
         if scale is None:
             scale = max(a.scale for a in aa)
