@@ -103,3 +103,89 @@ class H5Writer(object):
                          chunks=self._chunks(data.shape),
                          fillvalue=nodata,
                          **self._opts)
+
+
+def slurp(fname, proc=None, keep_eol=False):
+    import gzip
+    import lzma
+
+    _open = open
+
+    if fname.endswith('.gz'):
+        _open = gzip.open
+    if fname.endswith('.xz'):
+        _open = lzma.open
+
+    def mk_proc(proc):
+        maybe_strip = (lambda s: s.rstrip('\n')) if keep_eol is False else (lambda s: s)
+
+        if proc is None:
+            return maybe_strip
+        else:
+            return lambda s: proc(maybe_strip(s))
+
+    with _open(fname, 'rt') as f:
+        return list(map(mk_proc(proc), f.readlines()))
+
+
+def dump_text(txt, fname=None):
+    import gzip
+    import lzma
+    import sys
+
+    eol = '\n'
+
+    def write_to(txt, f):
+        if isinstance(txt, str):
+            f.write(txt)
+        else:
+            f.writelines(map(lambda x: str(x) + eol, txt))
+
+    if fname is None:
+        write_to(txt, sys.stdout)
+        return True
+
+    _open = open
+
+    if fname.endswith('.gz'):
+        _open = gzip.open
+    if fname.endswith('.xz'):
+        _open = lzma.open
+
+    with _open(fname, 'wt') as f:
+        write_to(txt, f)
+
+    return True
+
+
+def load_shapes(fname, pred=lambda _: True):
+    import fiona
+    from shapely.geometry import shape
+
+    with fiona.open(fname, 'r') as f:
+        shapes = [shape(g['geometry'])
+                  for g in f.values() if pred(g)]
+
+        return shapes, f.crs
+
+
+def load_polygons(fname):
+    return load_shapes(fname, lambda g: g['geometry']['type'] == 'Polygon')
+
+
+def save_png(fname, im, bgr=False, binary=False):
+    import cv2
+
+    if im.ndim == 3 and bgr is False:
+        _, _, nc = im.shape
+        if nc == 3:
+            im = im[:, :, ::-1]  # Convert to BGR
+        elif nc == 4:
+            im = im[:, :, [2, 1, 0, 3]]  # Convert to BGRA
+
+    png_opts = (cv2.IMWRITE_PNG_COMPRESSION, 9)
+
+    if binary:
+        png_opts = png_opts + (cv2.IMWRITE_PNG_BILEVEL, 1)
+
+    return cv2.imwrite(fname, im, png_opts)

@@ -45,3 +45,18 @@ def plot_roi(roi, style='-', ax=None, south_square=0, north_square=0, **kwargs):
 
     _, extents = f(roi.addr, roi.shape)
     return plot_bbox(extents, style=style, ax=ax, **kwargs)
+
+
+def index_to_rgb(im, palette, alpha=None):
+    alpha_ch = () if alpha is None else (0xFF,)
+
+    def to_rgb(v):
+        return tuple((v >> (i*8)) & 0xFF for i in [2, 1, 0]) + alpha_ch
+
+    palette = np.vstack(map(to_rgb, palette)).astype('uint8')
+
+    im_c = palette[im]
+    if alpha is not None:
+        im_c[im == alpha, 3] = 0
+
+    return im_c

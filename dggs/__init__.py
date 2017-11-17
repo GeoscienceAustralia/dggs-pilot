@@ -291,16 +291,18 @@ class DGGS(object):
         def __repr__(self):
             return 'Image @ ' + repr(self._roi)
 
+        def _to_slice(self, obj):
+            if isinstance(obj, DGGS.ROI):
+                return DGGS.roi_slice(self._roi, obj)
+            if isinstance(obj, (DGGS.Address, str)):
+                return DGGS.roi_slice(self._roi, DGGS.ROI(obj, 1, 1))
+            return obj
+
         def __getitem__(self, roi):
-            if isinstance(roi, DGGS.ROI):
-                return self._data[DGGS.roi_slice(self._roi, roi)]
-            return self._data[roi]
+            return self._data[self._to_slice(roi)]
 
         def __setitem__(self, roi, val):
-            if isinstance(roi, DGGS.ROI):
-                self._data.__setitem__(DGGS.roi_slice(self._roi, roi), val)
-            else:
-                self._data.__setitem__(roi, val)
+            self._data.__setitem__(self._to_slice(roi), val)
 
     @staticmethod
     def roi_from_points(aa, scale=None):
@@ -833,3 +835,13 @@ class DGGS(object):
             return rot(im, a), points2extent(p1.ravel(), p2.ravel())
 
         return with_rot
+
+
+def mask_from_addresses(aa, roi=None):
+    roi = DGGS.roi_from_points(aa) if roi is None else roi
+    mm = DGGS.Image(np.zeros(roi.shape, dtype='bool'), roi)
+
+    for a in aa:
+        mm[a] = True
+
+    return mm
