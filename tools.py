@@ -2,29 +2,6 @@ import numpy as np
 import h5py
 
 
-def polygon_path(x, y=None):
-    """A little bit like numpy.meshgrid, except returns only boundary values and
-    limited to 2d case only.
-
-    Examples:
-      [0,1], [3,4] =>
-      array([[0, 1, 1, 0, 0],
-             [3, 3, 4, 4, 3]])
-
-      [0,1] =>
-      array([[0, 1, 1, 0, 0],
-             [0, 0, 1, 1, 0]])
-    """
-    if y is None:
-        y = x
-
-    return np.vstack([
-        np.vstack([x, np.full_like(x, y[0])]).T,
-        np.vstack([np.full_like(y, x[-1]), y]).T[1:],
-        np.vstack([x, np.full_like(x, y[-1])]).T[::-1][1:],
-        np.vstack([np.full_like(y, x[0]), y]).T[::-1][1:]]).T
-
-
 def spread_num_samples(v):
     v_int = np.floor(v).astype('uint32')
     n_partials = int(v.sum() - v_int.sum())
@@ -130,6 +107,7 @@ def convert(src_file, dst_file, scale_level, band_names=None, inter=None):
     import rasterio
     from .dggs import DGGS
     from .dggs.io import H5Writer
+    from .dggs.tools import polygon_path
 
     if isinstance(band_names, str):
         band_names = [band_names]
