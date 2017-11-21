@@ -648,6 +648,14 @@ class DGGS(object):
 
         return out
 
+    def roi_from_geo(self, geo, scale):
+        """
+        geo.{crs, affine, shape} -> [ROI]
+        """
+        from .tools import geo_boundary
+        x, y = geo_boundary(geo.affine, geo.shape)
+        return self.compute_overlap(scale, x, y, geo.crs)
+
     def pixel_coord_transform(self, addr, w=0, h=0, dst_crs=None, no_offset=False, native=False):
         """
            Return method that can map pixel coord x,y to coordinate system defined by dst_crs

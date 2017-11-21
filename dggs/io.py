@@ -1,6 +1,10 @@
 import numpy as np
 import xarray as xr
 import h5py
+from collections import namedtuple
+
+BandInfo = namedtuple('BandInfo', ['dtype', 'nodata', 'block'])
+GeoFileInfo = namedtuple('GeoFileInfo', ['crs', 'affine', 'shape', 'bands'])
 
 
 def _h5_parse_structure(f):
@@ -193,3 +197,50 @@ def save_png(fname, im, bgr=False, binary=None):
         png_opts = png_opts + (cv2.IMWRITE_PNG_BILEVEL, 1)
 
     return cv2.imwrite(fname, im, png_opts)
+
+
+def geo_file_info(fname):
+    import rasterio
+
+    def info(f):
+        def band_info(idx):
+            return BandInfo(f.dtypes[idx], f.nodatavals[idx], f.block_shapes[idx])
+
+        bands = [band_info(i) for i in range(f.count)]
+        return GeoFileInfo(f.crs.to_dict(), f.affine, f.shape, bands)
+
+    if isinstance(fname, str):
+        with rasterio.open(fname, 'r') as f:
+            return info(f)
+    return info(fname)
+
+
+def geo_load(fname, fix_nodata=True):
+    import rasterio
+
+    def bad_nodata(band):
+        if np.dtype(band.dtype).kind == 'f':
+            if (band.nodata is not None) and (not np.isnan(band.nodata)):
+                return True
+        return False
+
+    def fix_band_info(band):
+        T = type(band)
+        band = band._asdict()
+        band['nodata'] = None
+        return T(**band)
+
+    with rasterio.open(fname, 'r') as f:
+        info = geo_file_info(f)
+        bands = []
+
+        for i, band in enumerate(info.bands):
+            data = f.read(i+1)
+
+            if fix_nodata and bad_nodata(band):
+                data[data == band.nodata] = np.nan
+                info.bands[i] = fix_band_info(band)
+
+            bands.append(data)
+
+        return info, bands

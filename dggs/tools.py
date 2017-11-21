@@ -127,3 +127,11 @@ def apply_affine(A, x, y):
 
     x, y = A*np.vstack([x.ravel(), y.ravel()])
     return x.reshape(sh), y.reshape(sh)
+
+
+def geo_boundary(affine, shape):
+    h, w = shape
+    x = np.linspace(0, w, w+1)
+    y = np.linspace(0, h, h+1)
+    x, y = polygon_path(x, y)
+    return apply_affine(affine, x, y)
