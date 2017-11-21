@@ -173,7 +173,7 @@ def load_polygons(fname):
     return load_shapes(fname, lambda g: g['geometry']['type'] == 'Polygon')
 
 
-def save_png(fname, im, bgr=False, binary=False):
+def save_png(fname, im, bgr=False, binary=None):
     import cv2
 
     if im.ndim == 3 and bgr is False:
@@ -184,6 +184,10 @@ def save_png(fname, im, bgr=False, binary=False):
             im = im[:, :, [2, 1, 0, 3]]  # Convert to BGRA
 
     png_opts = (cv2.IMWRITE_PNG_COMPRESSION, 9)
+
+    if im.dtype == np.bool:
+        im = im.astype('uint8')
+        binary = True if binary is None else binary
 
     if binary:
         png_opts = png_opts + (cv2.IMWRITE_PNG_BILEVEL, 1)
