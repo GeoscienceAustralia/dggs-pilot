@@ -845,3 +845,62 @@ def mask_from_addresses(aa, roi=None):
         mm[a] = True
 
     return mm
+
+
+def mask_to_addresses(im, dg=DGGS()):
+    def offsets_to_txt(addr, xx, yy):
+        return sorted(str(addr + (x, y)) for x, y in zip(xx, yy))
+
+    def mask_lvl_diff(m, roi, m2, m2_roi):
+        assert roi.scale == m2_roi.scale + 1
+        m2, m2_roi = dg.expand(m2, m2_roi)
+        m2, _ = dg.crop(m2, m2_roi, roi)
+        return m*(~m2)
+
+    m = im.value
+    roi = im.roi
+
+    out = []
+
+    while m.any():
+        m2, m2_roi = dg.scale_op_and(m, roi, tight=True)
+        m_diff = mask_lvl_diff(m, roi, m2, m2_roi)
+        y, x = np.where(m_diff)
+
+        out = offsets_to_txt(roi.addr, x, y) + out
+
+        m, roi = m2, m2_roi
+
+    return out
+
+
+def shape_to_mask(poly, crs, scale_level, dg=DGGS(), align=None):
+    from shapely import ops
+    from rasterio.features import rasterize
+
+    def mk_to_pix_transform(roi, src_crs):
+        to_native = dg.to_native(src_crs)
+        tr, *_ = dg.pixel_coord_transform(roi, native=True, no_offset=True)
+
+        def transform(x, y):
+            x, y = to_native(x, y)
+            return tr.inverse(x, y)
+
+        return transform
+
+    overlaps = dg.compute_overlap(scale_level, *poly.boundary.xy, crs=crs)
+
+    if len(overlaps) > 1:
+        raise NotImplemented("Error: shape crosses top level cell, this is currently not supported")
+    elif len(overlaps) == 0:
+        raise ValueError("Something went wrong: couldn't convert polygon to lonlat properly")
+
+    roi, *_ = overlaps
+
+    if align is not None:
+        roi = roi.align_by(align)
+
+    poly_pix = ops.transform(mk_to_pix_transform(roi, crs), poly)
+    im = rasterize([poly_pix], out_shape=roi.shape).astype(np.bool)
+
+    return dg.Image(im, roi.addr)
