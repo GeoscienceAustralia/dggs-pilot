@@ -741,7 +741,21 @@ class DGGS(object):
             if nodata is None:
                 nodata = 0
 
-            src_x, src_y = apply_affine(~affine, u, v)
+            # Depending on pixel origin notations we might have to
+            # subtract 0.5 from src_x, src_y, or better adjust affine matrix
+            # for equivalent computation, I believe rasterio (source of Affine
+            # matrix) places 0,0 at the top left corner of the top left pixel,
+            # while OpenCV (remap) might be using pixel center of the top-left
+            # pixel as an origin. However I couldn't find any reference in the
+            # openCV docs that states categorically what the coordinates of
+            # pixel corners are.
+            A = ~affine
+
+            # TODO: make this configurable
+            if True:  # Change 0,0 from top-left corner of the pixel to pixel center
+                A = A.translation(-0.5, -0.5)*A
+
+            src_x, src_y = apply_affine(A, u, v)
             return cv2.remap(src, src_x, src_y, human2cv[inter], borderValue=nodata)
 
         return warp
