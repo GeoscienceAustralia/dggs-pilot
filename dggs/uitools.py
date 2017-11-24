@@ -1,14 +1,56 @@
 import numpy as np
 import matplotlib.pyplot as plt
 
-from .dggs.tools import polygon_path
-from .dggs import DGGS
+from .tools import polygon_path
+from . import DGGS
 
 dg = DGGS()
 
 
 def _get_ax(ax):
     return ax if ax else plt.gca()
+
+
+def is_rgba(ds):
+    return set('blue green red alpha'.split()).issubset(set(v for v in ds.data_vars))
+
+
+def is_rgb(ds):
+    return set('blue green red'.split()).issubset(set(v for v in ds.data_vars))
+
+
+def as_rgb(ds):
+    return np.dstack([ds[v] for v in 'red green blue'.split()])
+
+
+def as_rgba(ds):
+    return np.dstack([ds[v] for v in 'red green blue alpha'.split()])
+
+
+def cell_bounds(addr):
+    tr, *_ = dg.pixel_coord_transform(addr, 1, 1, native=True, no_offset=True)
+    x_min, y_min = tr(0, 0)
+    x_max, y_max = tr(1, 1)
+    return (x_min, x_max, y_min, y_max)
+
+
+def cell_center(addr):
+    tr, *_ = dg.pixel_coord_transform(addr, native=True)
+    return tr(0, 0)
+
+
+def merge_extents(e1, e2):
+    if e1 is None:
+        return e2
+
+    return [min(e1[0], e2[0]), max(e1[1], e2[1]),
+            min(e1[2], e2[2]), max(e1[3], e2[3])]
+
+
+def hide_axis(ax):
+    ax.xaxis.set_visible(False)
+    ax.yaxis.set_visible(False)
+    ax.axis('off')
 
 
 def plot_bbox(extents, style='-', ax=None, **kwargs):
