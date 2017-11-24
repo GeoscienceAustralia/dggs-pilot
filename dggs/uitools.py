@@ -1,4 +1,6 @@
 import numpy as np
+import xarray as xr
+import matplotlib.figure
 import matplotlib.pyplot as plt
 
 from .tools import polygon_path
@@ -28,7 +30,7 @@ def as_rgba(ds):
 
 
 def cell_bounds(addr):
-    tr, *_ = dg.pixel_coord_transform(addr, 1, 1, native=True, no_offset=True)
+    tr, *_ = dg.pixel_coord_transform(addr, native=True, no_offset=True)
     x_min, y_min = tr(0, 0)
     x_max, y_max = tr(1, 1)
     return (x_min, x_max, y_min, y_max)
@@ -102,3 +104,93 @@ def index_to_rgb(im, palette, alpha=None):
         im_c[im == alpha, 3] = 0
 
     return im_c
+
+
+def _to_roi(x):
+    if isinstance(x, (str, DGGS.Address)):
+        return DGGS.ROI(x)
+    return x
+
+
+def _to_addr(x):
+    if hasattr(x, 'addr'):
+        return x.addr
+    if isinstance(x, str):
+        return DGGS.Address(x)
+    return x
+
+
+class DgDraw(object):
+    def __init__(self, ax,
+                 north_square=0,
+                 south_square=0,
+                 dg=DGGS()):
+        if ax == 'new':
+            fig = plt.figure()
+            ax = fig.add_axes([0, 0, 1, 1])
+        if isinstance(ax, matplotlib.figure.Figure):
+            ax = ax.add_axes([0, 0, 1, 1])
+
+        self._ax = ax
+        self._dg = dg
+        self._helper = dg.mk_display_helper(south_square=south_square,
+                                            north_square=north_square)
+
+    def imshow(self, data, band_idx=0):
+        if not isinstance(data, list):
+            data = [data]
+
+        ax = self._ax
+        extents = None
+
+        for ds in data:
+            addr = ds.addr
+
+            if isinstance(ds, xr.Dataset):
+                if is_rgba(ds):
+                    im = as_rgba(ds)
+                elif is_rgb(ds):
+                    im = as_rgb(ds)
+                else:
+                    im = list(ds.data_vars.values())[band_idx].values
+            elif isinstance(ds, xr.DataArray):
+                im = ds.values
+            elif isinstance(ds, DGGS.Image):
+                im = ds.value
+            else:
+                raise ValueError('Expect one of: xarray.Data{set,Array}, DGGS.Image')
+
+            im, ee = self._helper(addr, im)
+            extents = merge_extents(extents, ee)
+            ax.imshow(im, extent=ee)
+
+        ax.set_xlim(*extents[:2])
+        ax.set_ylim(*extents[2:])
+        return self
+
+    def roi(self, roi, style='-', **kwargs):
+        roi = _to_roi(roi)
+
+        _, extents = self._helper(roi.addr, roi.shape)
+        plot_bbox(extents, style=style, ax=self._ax, **kwargs)
+        return self
+
+    def annotate(self, txt, addr, **kwargs):
+        addr = _to_addr(addr)
+        cx, cy = cell_center(addr)
+        self._ax.annotate(txt, xy=(cx, cy), **kwargs)
+        return self
+
+    def hide_axis(self):
+        hide_axis(self._ax)
+        return self
+
+    def zoom(self, roi):
+        roi = _to_roi(roi)
+        _, extents = self._helper(roi.addr, roi.shape)
+        self._ax.axis(extents)
+        return self
+
+    @property
+    def figure(self):
+        return self._ax.figure
