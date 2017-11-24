@@ -3,6 +3,8 @@ import xarray as xr
 import h5py
 from collections import namedtuple
 
+from . import DGGS
+
 BandInfo = namedtuple('BandInfo', ['dtype', 'nodata', 'block', 'name'])
 GeoFileInfo = namedtuple('GeoFileInfo', ['crs', 'affine', 'shape', 'bands'])
 
@@ -40,9 +42,15 @@ def _h5_parse_structure(f):
     return bands, sites
 
 
-def h5_load(fname, bands=None):
+def h5_load(fname, bands=None, dg=DGGS()):
 
     def read_bands(f, addr, shape, bands):
+        h, w = shape[:2]
+        roi = dg.ROI(addr, w, h)
+        coords = dg.xy_from_roi(roi)[::-1]
+
+        dims = ('y', 'x')
+
         def read(band):
             path = band + '/' + addr
             ds = f.get(path)
@@ -55,10 +63,15 @@ def h5_load(fname, bands=None):
 
                 dd = np.empty(shape, dtype=ds.dtype)
                 ds.read_direct(dd)
-                return dd
 
-        dims = ('y', 'x')
-        return xr.Dataset({band: (dims, read(band)) for band in bands}, attrs=dict(addr=addr))
+                # TODO: nodata
+                return xr.DataArray(dd,
+                                    dims=dims,
+                                    name=band,
+                                    coords=coords)
+
+        return xr.Dataset({band: read(band) for band in bands},
+                          attrs=dict(addr=addr))
 
     with h5py.File(fname, 'r') as f:
         bands_, sites = _h5_parse_structure(f)
@@ -68,8 +81,8 @@ def h5_load(fname, bands=None):
             # TODO: verify that requested bands are present in a file
             pass
 
-        return {addr: read_bands(f, addr, shape, bands)
-                for (addr, shape) in sites.items()}
+        return [read_bands(f, addr, shape, bands)
+                for (addr, shape) in sites.items()]
 
 
 class H5Writer(object):
