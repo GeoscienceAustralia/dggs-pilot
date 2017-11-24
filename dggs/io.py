@@ -68,7 +68,8 @@ def h5_load(fname, bands=None, dg=DGGS()):
                 return xr.DataArray(dd,
                                     dims=dims,
                                     name=band,
-                                    coords=coords)
+                                    coords=coords,
+                                    attrs=dict(addr=addr))
 
         return xr.Dataset({band: read(band) for band in bands},
                           attrs=dict(addr=addr))

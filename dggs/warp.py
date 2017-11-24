@@ -33,7 +33,7 @@ def warp_all(info, bands,
 
             im = wrp(band, info.affine, nodata, inter=inter)
 
-            attrs = {}
+            attrs = dict(addr=str(dst_roi.addr))
             if nodata is not None:
                 attrs['nodata'] = nodata
 
