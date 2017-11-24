@@ -112,6 +112,10 @@ class DGGS(object):
         def xy(self):
             return self._ixys[1:3]
 
+        @property
+        def code(self):
+            return self.addr[0]
+
         def __iter__(self):
             return iter(self._ixys)
 
@@ -865,7 +869,10 @@ class DGGS(object):
                                    270: cv2.ROTATE_90_COUNTERCLOCKWISE}[a])
 
         def with_rot(addr, im):
-            cc = corrections.get(addr[0])
+            if isinstance(addr, str):
+                addr = DGGS.Address(addr)
+
+            cc = corrections.get(addr.code)
 
             if cc is None:
                 return simple(addr, im)
