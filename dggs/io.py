@@ -3,7 +3,7 @@ import xarray as xr
 import h5py
 from collections import namedtuple
 
-BandInfo = namedtuple('BandInfo', ['dtype', 'nodata', 'block'])
+BandInfo = namedtuple('BandInfo', ['dtype', 'nodata', 'block', 'name'])
 GeoFileInfo = namedtuple('GeoFileInfo', ['crs', 'affine', 'shape', 'bands'])
 
 
@@ -58,7 +58,7 @@ def h5_load(fname, bands=None):
                 return dd
 
         dims = ('y', 'x')
-        return xr.Dataset({band: (dims, read(band)) for band in bands})
+        return xr.Dataset({band: (dims, read(band)) for band in bands}, attrs=dict(addr=addr))
 
     with h5py.File(fname, 'r') as f:
         bands_, sites = _h5_parse_structure(f)
@@ -102,11 +102,32 @@ class H5Writer(object):
         elif not isinstance(g, h5py.Group):
             raise IOError('TODO: fix error message')
 
-        g.create_dataset(addr,
-                         data=data,
-                         chunks=self._chunks(data.shape),
-                         fillvalue=nodata,
-                         **self._opts)
+        if not isinstance(addr, str):
+            addr = str(addr)
+
+        ds = g.create_dataset(addr,
+                              data=data,
+                              chunks=self._chunks(data.shape),
+                              fillvalue=nodata,
+                              **self._opts)
+        if ds.ndim >= 2:
+            ds.dims[0].label = 'y'
+            ds.dims[1].label = 'x'
+
+
+def h5_save(fname, datasets, chunk_size=3**5):
+    if not isinstance(datasets, (tuple, list)):
+        datasets = [datasets]
+
+    with H5Writer(fname, chunk_size=chunk_size) as write:
+        for ds in datasets:
+            assert hasattr(ds, 'addr')
+
+            for name, da in ds.data_vars.items():
+                nodata = da.attrs.get('nodata', None)
+                write(ds.addr, name, da.values, nodata=nodata)
+
+    return True
 
 
 def slurp(fname, proc=None, keep_eol=False):
@@ -199,12 +220,17 @@ def save_png(fname, im, bgr=False, binary=None):
     return cv2.imwrite(fname, im, png_opts)
 
 
-def geo_file_info(fname):
+def geo_file_info(fname, band_names=None):
     import rasterio
+
+    def band_name(idx):
+        if band_names is None:
+            return None
+        return band_names[idx]
 
     def info(f):
         def band_info(idx):
-            return BandInfo(f.dtypes[idx], f.nodatavals[idx], f.block_shapes[idx])
+            return BandInfo(f.dtypes[idx], f.nodatavals[idx], f.block_shapes[idx], band_name(idx))
 
         bands = [band_info(i) for i in range(f.count)]
         return GeoFileInfo(f.crs.to_dict(), f.affine, f.shape, bands)
@@ -215,7 +241,7 @@ def geo_file_info(fname):
     return info(fname)
 
 
-def geo_load(fname, fix_nodata=True):
+def geo_load(fname, fix_nodata=True, band_names=None):
     import rasterio
 
     def bad_nodata(band):
@@ -227,11 +253,11 @@ def geo_load(fname, fix_nodata=True):
     def fix_band_info(band):
         T = type(band)
         band = band._asdict()
-        band['nodata'] = None
+        band['nodata'] = np.nan
         return T(**band)
 
     with rasterio.open(fname, 'r') as f:
-        info = geo_file_info(f)
+        info = geo_file_info(f, band_names=band_names)
         bands = []
 
         for i, band in enumerate(info.bands):

@@ -648,13 +648,18 @@ class DGGS(object):
 
         return out
 
-    def roi_from_geo(self, geo, scale):
+    def roi_from_geo(self, geo, scale, align_by=None):
         """
         geo.{crs, affine, shape} -> [ROI]
         """
         from .tools import geo_boundary
         x, y = geo_boundary(geo.affine, geo.shape)
-        return self.compute_overlap(scale, x, y, geo.crs)
+        rr = self.compute_overlap(scale, x, y, geo.crs)
+
+        if align_by is not None:
+            return [roi.align_by(align_by) for roi in rr]
+
+        return rr
 
     def pixel_coord_transform(self, addr, w=0, h=0, dst_crs=None, no_offset=False, native=False):
         """
@@ -759,6 +764,20 @@ class DGGS(object):
             return cv2.remap(src, src_x, src_y, human2cv[inter], borderValue=nodata)
 
         return warp
+
+    def xy_from_roi(self, roi):
+        """
+        Return x coordinates of pixel columns and y coordinates of pixel rows
+
+        Coordinates are in rHealPix for centers of pixels
+        """
+        addr, w, h = roi
+        tr, *_ = self.pixel_coord_transform(addr, native=True)
+
+        x, _ = tr(np.arange(w), np.zeros(w))
+        _, y = tr(np.zeros(h), np.arange(h))
+
+        return x, y
 
     def mk_display_helper(self, south_square=0, north_square=0):
         norm_factor = self._sm
