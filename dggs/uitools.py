@@ -194,3 +194,14 @@ class DgDraw(object):
     @property
     def figure(self):
         return self._ax.figure
+
+
+def save_axis_tight(fname, ax=None, **kwargs):
+    ax = _get_ax(ax)
+    fig = ax.figure
+
+    fig.savefig(fname,
+                bbox_inches=ax.get_window_extent().transformed(fig.dpi_scale_trans.inverted()),
+                pad_inches=0,
+                transparent=True,
+                **kwargs)
