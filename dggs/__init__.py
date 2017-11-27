@@ -641,6 +641,11 @@ class DGGS(object):
             overlap = cell.intersection(src_poly)
 
             if not overlap.is_empty:
+                # TODO: this doesn't work very well in polar regions,
+                # particularly for large overlaps that cover majority of the
+                # polar cell. In polar regions probably need to do this
+                # separately for each quadrant.
+
                 ov_ = shapely.ops.transform(lambda x, y: self._rhm(x, y), overlap)
 
                 rh_box = ov_.bounds
@@ -735,8 +740,8 @@ class DGGS(object):
         u, v = np.meshgrid(range(w), range(h))
         u, v = [a.astype('float32') for a in tr(u, v)]
 
-        if src_proj is None:
-            u[u <= -180] = -180  # work-around for polar region numeric artifacts
+        if src_proj is None or src_proj.is_latlong():
+            u[u <= -180] = -180  # work-around for polar region numeric artefacts
 
         human2cv = dict(linear=cv2.INTER_LINEAR,
                         nearest=cv2.INTER_NEAREST,
