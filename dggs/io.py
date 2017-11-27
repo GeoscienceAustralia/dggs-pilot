@@ -197,12 +197,18 @@ def dump_text(txt, fname=None):
     return True
 
 
-def load_shapes(fname, pred=lambda _: True):
+def load_shapes(fname, pred=lambda _: True, with_attributes=True):
     import fiona
     from shapely.geometry import shape
 
+    def mk_shape(g):
+        sh = shape(g['geometry'])
+        if with_attributes:
+            sh.attrs = g['properties'].copy()
+        return sh
+
     with fiona.open(fname, 'r') as f:
-        shapes = [shape(g['geometry'])
+        shapes = [mk_shape(g)
                   for g in f.values() if pred(g)]
 
         return shapes, f.crs

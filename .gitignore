@@ -1,5 +1,6 @@
 *.pyc
 /notebooks/.ipynb_checkpoints/*
 *.png
-*.h5
+/notebooks/*.h5
 /dggs.egg-info/*
+/data/*
