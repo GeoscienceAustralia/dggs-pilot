@@ -136,12 +136,12 @@ class DgDraw(object):
         self._helper = dg.mk_display_helper(south_square=south_square,
                                             north_square=north_square)
 
-    def imshow(self, data, band_idx=0):
+    def imshow(self, data, band_idx=0, reset_axis=True, **kwargs):
         if not isinstance(data, list):
             data = [data]
 
         ax = self._ax
-        extents = None
+        extents = None if reset_axis else ax.get_xlim() + ax.get_ylim()
 
         for ds in data:
             addr = ds.addr
@@ -162,7 +162,7 @@ class DgDraw(object):
 
             im, ee = self._helper(addr, im)
             extents = merge_extents(extents, ee)
-            ax.imshow(im, extent=ee)
+            ax.imshow(im, extent=ee, **kwargs)
 
         ax.set_xlim(*extents[:2])
         ax.set_ylim(*extents[2:])
@@ -179,6 +179,11 @@ class DgDraw(object):
         addr = _to_addr(addr)
         cx, cy = cell_center(addr)
         self._ax.annotate(txt, xy=(cx, cy), **kwargs)
+        return self
+
+    def scatter(self, addrs, **kwargs):
+        cx, cy = np.r_[[cell_center(a) for a in addrs]].T
+        self._ax.scatter(cx, cy, **kwargs)
         return self
 
     def hide_axis(self):
