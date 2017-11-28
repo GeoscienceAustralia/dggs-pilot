@@ -84,6 +84,13 @@ class DGGS(object):
 
         return code + s
 
+    @staticmethod
+    def a64_to_string(a):
+        """ Convert 64-bit representation of an address to string representation
+        """
+        idx = (int(a) >> 60) & 0b0111
+        return DGGS.i2n[idx] + '{:16x}'.format(a)[1:].rstrip('f')
+
     class Address(object):
         def __init__(self, val):
             if isinstance(val, str):
@@ -532,44 +539,52 @@ class DGGS(object):
 
         return convert(x, y)
 
-    def to_address(self, scale_level, lx, ly, native=False, crs=None):
-        if native:
-            idx, x, y = self._rh_to_ixy(lx, ly, scale_level, self._sm)
-        else:
-            idx, x, y = self.to_ixy(scale_level, lx, ly, crs=crs)
+    def to_address(self, scale_level, lx=None, ly=None, native=False, crs=None):
+        assert scale_level <= 15  # TODO: bulk processing for finer grain resolutions
 
-        pad_bits = (15 - scale_level)*4
-
-        # fill header first
-        if isinstance(idx, int):
-            array_mode = False
-            v = (idx | 0b1000) << 60
-            cell = 0
-        else:
-            array_mode = True
-            v = (idx | 0b1000).astype('uint64') << 60
-            cell = np.empty_like(v)
-
-        # fill padding bits
-        v |= (0xFFFFFFFFFFFFFFFF >> (64-pad_bits))
-
-        for i in range(scale_level):
-            if array_mode:
-                cell[:] = ((x % 3) + 3*(y % 3))
+        def impl(lx, ly):
+            if native:
+                idx, x, y = self._rh_to_ixy(lx, ly, scale_level, self._sm)
             else:
-                cell = ((x % 3) + 3*(y % 3))
+                idx, x, y = self.to_ixy(scale_level, lx, ly, crs=crs)
 
-            cell <<= pad_bits
-            v |= cell
+            pad_bits = (15 - scale_level)*4
 
-            pad_bits += 4
-            x = x//3
-            y = y//3
+            # fill header first
+            if isinstance(idx, int):
+                array_mode = False
+                v = (idx | 0b1000) << 60
+                cell = 0
+            else:
+                array_mode = True
+                v = (idx | 0b1000).astype('uint64') << 60
+                cell = np.empty_like(v)
 
-        if not array_mode:
-            return DGGS.i2n[idx] + '{:16x}'.format(v)[1:scale_level+1]
+            # fill padding bits
+            v |= (0xFFFFFFFFFFFFFFFF >> (64-pad_bits))
 
-        return v
+            for i in range(scale_level):
+                if array_mode:
+                    cell[:] = ((x % 3) + 3*(y % 3))
+                else:
+                    cell = ((x % 3) + 3*(y % 3))
+
+                cell <<= pad_bits
+                v |= cell
+
+                pad_bits += 4
+                x = x//3
+                y = y//3
+
+            if not array_mode:
+                return DGGS.a64_to_string(v)
+
+            return v
+
+        if lx is None:
+            return impl
+
+        return impl(lx, ly)
 
     def _as_proj(self, crs):
         if isinstance(crs, pyproj.Proj):
@@ -957,3 +972,24 @@ def shape_to_mask(poly, crs, scale_level, dg=DGGS(), align=None):
     im = rasterize([poly_pix], out_shape=roi.shape).astype(np.bool)
 
     return dg.Image(im, roi.addr)
+
+
+def pd_compute_address(df, scale_level=15, crs=None, dg=DGGS()):
+    """Given a pandas DataFrame with variableis x,y compute DGGS address for each
+    entry and inject new data columns into the data frame
+
+    addr   -- String
+    addr64 -- Address as 64 bit integer
+    """
+    assert 'x' in df
+    assert 'y' in df
+    assert 'addr' not in df
+    assert 'addr64' not in df
+
+    aa64 = dg.to_address(scale_level, df.x.values, df.y.values, crs=crs)
+    aa = [dg.a64_to_string(a) for a in aa64]
+
+    df.insert(0, 'addr64', aa64)
+    df.insert(0, 'addr', aa)
+
+    return df
