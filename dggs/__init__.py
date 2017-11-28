@@ -906,6 +906,9 @@ class DGGS(object):
 
 
 def mask_from_addresses(aa, roi=None):
+    if len(aa) > 0 and isinstance(aa[0], str):
+        aa = [DGGS.Address(a) for a in aa]
+
     roi = DGGS.roi_from_points(aa) if roi is None else roi
     mm = DGGS.Image(np.zeros(roi.shape, dtype='bool'), roi)
 

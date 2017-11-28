@@ -100,3 +100,12 @@ def gen_pts_from_distribution(im, affine, noshuffle=False):
         return xy
 
     return xy[:, np.random.choice(n_total, n_total, replace=False)]
+
+
+def pd_naive_overlap(query_ddresses, df):
+    mm = np.zeros(len(df), dtype=np.bool)
+
+    for a in query_ddresses:
+        mm |= np.r_[[addr.startswith(a) for addr in df.addr.values]]
+
+    return mm
