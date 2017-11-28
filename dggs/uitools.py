@@ -210,3 +210,14 @@ def save_axis_tight(fname, ax=None, **kwargs):
                 pad_inches=0,
                 transparent=True,
                 **kwargs)
+
+
+def mask_to_float(mm):
+    """ True -> 1.0
+        False -> nan
+
+    Useful for visualising masks
+    """
+    xx = mm.value.astype('float32')
+    xx[xx == 0] = np.nan
+    return type(mm)(xx, mm.addr)

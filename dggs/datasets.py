@@ -56,3 +56,25 @@ def get_by_name(name=None, **kwargs):
         return None
 
     return f(**kwargs)
+
+
+def act_suburb_mask(scale_level, mode='text'):
+    """ Returns a function that maps ACT suburb name (all capitals) to a DGGS mask.
+    """
+    from . import shape_to_mask, mask_to_addresses
+    suburbs, crs = get_by_name('act-suburbs')
+
+    def get(name=None, scale_level=scale_level, mode=mode):
+        if name is None:
+            return list(suburbs.keys())
+
+        poly = suburbs.get(name)
+        if poly is None:
+            return None
+
+        im = shape_to_mask(suburbs[name], crs=crs, scale_level=scale_level)
+        if mode == 'text':
+            return mask_to_addresses(im)
+
+        return im
+    return get
