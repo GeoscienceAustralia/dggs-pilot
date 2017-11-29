@@ -317,6 +317,9 @@ class DGGS(object):
 
     @staticmethod
     def roi_from_points(aa, scale=None):
+        if len(aa) > 0 and isinstance(aa[0], str):
+            aa = [DGGS.Address(a) for a in aa]
+
         if scale is None:
             scale = max(a.scale for a in aa)
 
@@ -975,6 +978,13 @@ def shape_to_mask(poly, crs, scale_level, dg=DGGS(), align=None):
     im = rasterize([poly_pix], out_shape=roi.shape).astype(np.bool)
 
     return dg.Image(im, roi.addr)
+
+
+def simplify_mask_naive(aa):
+    """Performance warning: goes via raster, not ideal for disjoint masks that are
+    far apart.
+    """
+    return mask_to_addresses(mask_from_addresses(aa))
 
 
 def pd_compute_address(df, scale_level=15, crs=None, dg=DGGS()):

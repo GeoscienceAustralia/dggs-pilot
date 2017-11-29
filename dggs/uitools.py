@@ -9,6 +9,19 @@ from . import DGGS
 dg = DGGS()
 
 
+class ReprWrapper(object):
+    """ Turns string into object such that `repr(ReprWrapper(s)) == s`
+    """
+    def __init__(self, val):
+        self._val = val
+
+    def __repr__(self):
+        return self._val
+
+    def __str__(self):
+        return self._val
+
+
 def _get_ax(ax):
     return ax if ax else plt.gca()
 
@@ -175,6 +188,31 @@ class DgDraw(object):
         plot_bbox(extents, style=style, ax=self._ax, **kwargs)
         return self
 
+    def qshow(self, q, max_level=None, grid_style=None, **kwargs):
+        from . import mask_from_addresses
+        im = mask_to_float(mask_from_addresses(q))
+
+        params = dict(cmap='spring',
+                      reset_axis=False,
+                      alpha=0.1)
+
+        params.update(kwargs)
+        self.imshow(im, **params)
+
+        if grid_style is None:
+            grid_style = dict(style='w-', alpha=0.7)
+
+        def should_plot(a):
+            if max_level is None:
+                return True
+            return len(a)-1 <= max_level
+
+        for addr in q:
+            if should_plot(addr):
+                self.roi(addr, **grid_style)
+
+        return self
+
     def annotate(self, txt, addr, **kwargs):
         addr = _to_addr(addr)
         cx, cy = cell_center(addr)
@@ -195,6 +233,10 @@ class DgDraw(object):
         _, extents = self._helper(roi.addr, roi.shape)
         self._ax.axis(extents)
         return self
+
+    @property
+    def raw(self):
+        return self._ax
 
     @property
     def figure(self):
@@ -221,3 +263,13 @@ def mask_to_float(mm):
     xx = mm.value.astype('float32')
     xx[xx == 0] = np.nan
     return type(mm)(xx, mm.addr)
+
+
+def addr_mask_repr(addr, n=4):
+    n_cells = len(addr)
+    n = min(n, n_cells)
+
+    ss = '{}:\n   {} ...\n   {}'.format(n_cells,
+                                        ','.join(addr[:n]),
+                                        ','.join(addr[-n:]))
+    return ReprWrapper(ss)
