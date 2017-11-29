@@ -192,6 +192,24 @@ class DGGS(object):
 
             return DGGS.Address(self.addr + (c*num_levels))
 
+        @property
+        def a64(self):
+            idx, x, y, scale = self._ixys
+            if scale > 15:
+                raise ValueError('Only addresses upto level 15 are supported for this mode')
+
+            pad_bits = (15 - scale)*4
+            v = (idx | 0b1000) << 60
+            v |= (0xFFFFFFFFFFFFFFFF >> (64-pad_bits))
+
+            for i in range(scale):
+                v |= (((x % 3) + 3*(y % 3)) << pad_bits)
+                pad_bits += 4
+                x = x//3
+                y = y//3
+
+            return v
+
         def __str__(self):
             return self.addr
 

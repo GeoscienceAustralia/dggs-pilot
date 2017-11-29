@@ -102,10 +102,33 @@ def gen_pts_from_distribution(im, affine, noshuffle=False):
     return xy[:, np.random.choice(n_total, n_total, replace=False)]
 
 
-def pd_naive_overlap(query_ddresses, df):
+def pd_naive_overlap_str(query_ddresses, df):
     mm = np.zeros(len(df), dtype=np.bool)
 
     for a in query_ddresses:
         mm |= np.r_[[addr.startswith(a) for addr in df.addr.values]]
+
+    return mm
+
+
+def pd_naive_overlap(query, df):
+    def a64_range(addr):
+        if isinstance(addr, str):
+            addr = DGGS.Address(addr)
+
+        assert addr.scale <= 15
+
+        pad = (15-addr.scale)*4
+
+        a64 = addr.a64
+        a_min = a64 - ((1 << pad) - 1)
+        a_max = a64 + 1
+        return (a_min, a_max)
+
+    mm = np.zeros(len(df), dtype=np.bool)
+
+    for a in query:
+        amin, amax = a64_range(a)
+        mm |= ((df.addr64 >= amin) & (df.addr64 < amax)).values
 
     return mm
