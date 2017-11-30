@@ -4,3 +4,5 @@
 /notebooks/*.h5
 /dggs.egg-info/*
 /data/*
+/passwd.txt
+/dggs-sample-data.zip
