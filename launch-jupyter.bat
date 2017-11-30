@@ -1,3 +1,3 @@
 call activate dggs
-cd notebookss
-juputer-notebook
+cd notebooks
+jupyter-notebook
