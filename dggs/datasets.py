@@ -1,6 +1,11 @@
 import pathlib
 
-_data_dir = pathlib.Path('./data')
+
+def _find_data_dir():
+    return pathlib.Path(__file__).parent.parent / 'data'
+
+
+_data_dir = _find_data_dir()
 
 
 def get_path(resource):
