@@ -34,9 +34,9 @@ On Windows
 
 # Getting sample data
 
-Sample data is not included in the repository, some of it might be sensitive, other might have re-distribution consttraints. Data is distributed separately on request.
+Sample data is not included in the repository, some of it might be sensitive, other might have re-distribution constraints. Data is distributed separately on request.
 
-Extract password protected `dggs-sample-data.zip` using provided password. Move files from `data/*` to `data/` folder in this repoistory.
+Extract password protected `dggs-sample-data.zip` using provided password. Move files from `data/*` to `data/` folder in this repository.
 
 
 # Running notebooks
